@@ -91,6 +91,18 @@ const Transactions = {
   }
 };
 
+// ---- BUDGETS ----
+const Budgets = {
+  _key(month) { return `cf_budgets_${month}`; },
+  getAll(month) { return lsGet(Budgets._key(month), []); },
+  set(month, categoryId, limit) {
+    const all = Budgets.getAll(month).filter(b => b.category_id !== categoryId);
+    if (limit > 0) all.push({ category_id: categoryId, monthly_limit: limit });
+    lsSet(Budgets._key(month), all);
+  },
+  remove(month, categoryId) { Budgets.set(month, categoryId, 0); }
+};
+
 // ---- GOALS ----
 const Goals = {
   getAll() { return lsGet('cf_goals', []); },

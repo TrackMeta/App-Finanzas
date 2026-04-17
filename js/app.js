@@ -97,8 +97,9 @@ async function loadDashboard() {
   // Donut
   renderDonut(txs, cats);
 
-  // Insights
-  const insights = generateInsights(txs, prevTxs, cats);
+  // Insights (incluye alertas de presupuesto)
+  const budgets = Budgets.getAll(State.currentMonth);
+  const insights = generateInsights(txs, prevTxs, cats, budgets);
   renderInsights($('dashboard-insights'), insights.slice(0,3));
 
   // Últimas transacciones
@@ -509,6 +510,62 @@ function selectCalDay(dateStr, txs) {
 }
 
 // ---- INSIGHTS PAGE ----
+// ---- PRESUPUESTOS ----
+function renderBudgetsList(txs, cats, budgets) {
+  const container = $('budgets-list');
+  if (!budgets.length) {
+    container.innerHTML = '<p class="text-muted text-sm">Sin presupuestos. Haz clic en "Editar" para configurar.</p>';
+    return;
+  }
+  const expCats = cats.filter(c => c.type === 'expense');
+  container.innerHTML = budgets.map(b => {
+    const cat = expCats.find(c => c.id === b.category_id);
+    if (!cat) return '';
+    const spent = txs.filter(t => t.type === 'expense' && t.category_id === b.category_id)
+                     .reduce((s, t) => s + t.amount, 0);
+    const pct = Math.min((spent / b.monthly_limit) * 100, 100);
+    const over = spent > b.monthly_limit;
+    const warn = pct >= 80 && !over;
+    const color = over ? 'var(--rose)' : warn ? 'var(--amber)' : 'var(--emerald)';
+    const remaining = b.monthly_limit - spent;
+    return `
+      <div style="display:flex;flex-direction:column;gap:0.4rem;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-weight:600;">${cat.icon} ${cat.name}</span>
+          <span style="font-size:0.8rem;color:${color};">
+            ${over ? '⚠️ Excedido ' : ''}${fmt(spent)} / ${fmt(b.monthly_limit)}
+          </span>
+        </div>
+        <div style="background:var(--bg-secondary);border-radius:99px;height:8px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${color};border-radius:99px;transition:width 0.4s;"></div>
+        </div>
+        <span style="font-size:0.75rem;color:var(--text-muted);">
+          ${over ? fmt(Math.abs(remaining)) + ' sobre el límite' : fmt(remaining) + ' disponible'}
+        </span>
+      </div>`;
+  }).join('<hr style="border-color:var(--border);margin:0.25rem 0;">');
+}
+
+function openBudgetsModal(cats, budgets) {
+  const expCats = cats.filter(c => c.type === 'expense');
+  $('budgets-form-list').innerHTML = expCats.map(cat => {
+    const existing = budgets.find(b => b.category_id === cat.id);
+    return `
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <span style="font-size:1.25rem;width:2rem;text-align:center;">${cat.icon}</span>
+        <span style="flex:1;font-size:0.9rem;">${cat.name}</span>
+        <div style="display:flex;align-items:center;gap:0.4rem;">
+          <span style="color:var(--text-muted);font-size:0.85rem;">${CURRENCY_SYMBOL}</span>
+          <input type="number" class="input budget-input" data-catid="${cat.id}"
+            value="${existing ? existing.monthly_limit : ''}"
+            placeholder="0" min="0" step="1"
+            style="width:90px;padding:0.4rem 0.5rem;font-size:0.85rem;text-align:right;" />
+        </div>
+      </div>`;
+  }).join('');
+  openOverlay('overlay-budgets');
+}
+
 async function loadInsights() {
   const [txs, cats, prevTxs] = await Promise.all([
     Transactions.getByMonth(State.currentMonth),
@@ -518,9 +575,13 @@ async function loadInsights() {
   State.transactions = txs;
   State.categories = cats;
 
+  // Presupuestos
+  const budgets = Budgets.getAll(State.currentMonth);
+  renderBudgetsList(txs, cats, budgets);
+
   // Score
-  const streak = State.user ? await Streaks.get(State.user.id) : null;
-  const score = calcScore(txs, [], [], streak);
+  const streak = State.user ? Streaks.get(State.user.id) : null;
+  const score = calcScore(txs, Goals.getAll(), budgets, streak);
   renderScore(score);
 
   // Proyección
@@ -758,6 +819,7 @@ async function saveTransaction() {
       is_recurring: false
     });
     Categorizer.reinforce(amount, State.quickAddCategoryId);
+    Streaks.update();
     toast(`Guardado: ${fmt(amount)}`, 'success');
     closeOverlay('overlay-quickadd');
     loadDashboard();
@@ -833,6 +895,23 @@ async function init() {
   });
 
   // -- Goals --
+  // -- Presupuestos --
+  $('btn-edit-budgets').addEventListener('click', () => {
+    const cats = Categories.getAll('expense');
+    const budgets = Budgets.getAll(State.currentMonth);
+    openBudgetsModal(cats, budgets);
+  });
+  $('btn-save-budgets').addEventListener('click', () => {
+    document.querySelectorAll('.budget-input').forEach(input => {
+      const catId = input.dataset.catid;
+      const val = parseFloat(input.value) || 0;
+      Budgets.set(State.currentMonth, catId, val);
+    });
+    closeOverlay('overlay-budgets');
+    toast('Presupuestos guardados ✓', 'success');
+    loadInsights();
+  });
+
   $('btn-new-goal').addEventListener('click', () => { initGoalForm(); openOverlay('overlay-goal'); });
   $('form-goal').addEventListener('submit', async e => {
     e.preventDefault();

@@ -243,6 +243,17 @@
           </div>
         </div>
 
+        <!-- Presupuestos -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">💰 Presupuestos del mes</h3>
+            <button id="btn-edit-budgets" class="btn btn-sm btn-ghost">Editar</button>
+          </div>
+          <div class="card-body">
+            <div id="budgets-list"><p class="text-muted text-sm">No hay presupuestos configurados.</p></div>
+          </div>
+        </div>
+
         <!-- Proyección -->
         <div class="card">
           <div class="card-header"><h3 class="card-title">Proyección fin de mes</h3></div>
@@ -430,6 +441,20 @@
 <!-- =============================================
      MODAL: NUEVA META
 ============================================= -->
+<!-- Modal: Editar presupuestos -->
+<div id="overlay-budgets" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">💰 Presupuestos del mes</h2>
+      <button class="btn-icon close-modal" data-modal="budgets">✕</button>
+    </div>
+    <div class="modal-body" id="budgets-form-list" style="display:flex;flex-direction:column;gap:0.75rem;max-height:70vh;overflow-y:auto;"></div>
+    <div class="modal-footer">
+      <button id="btn-save-budgets" class="btn btn-primary btn-full">Guardar presupuestos</button>
+    </div>
+  </div>
+</div>
+
 <div id="overlay-goal" class="overlay hidden">
   <div class="modal">
     <div class="modal-header">
