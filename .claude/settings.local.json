@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir=false --import-alias=\"@/*\" --yes)",
+      "Bash(where node:*)",
+      "Bash(where npm:*)",
+      "Bash(npm --version)",
+      "Bash(cmd /c \"node --version && npm --version && npx --version\")",
+      "Bash(cmd /c \"node -v\")",
+      "Bash(cmd /c \"npm -v\")",
+      "Bash(rm -rf app components lib stores hooks types middleware.ts next.config.ts tailwind.config.ts postcss.config.mjs tsconfig.json package.json .gitignore SETUP.md public/manifest.json)",
+      "Bash(mkdir -p css js icons)"
+    ]
+  }
+}

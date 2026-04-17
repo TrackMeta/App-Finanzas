@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Coach Finanzas</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0A0A0B" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Finanzas" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/app.css" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- Elementos ocultos que necesita el JS -->
+<div id="screen-login" style="display:none;">
+  <form id="form-magic-link"><input type="email" id="input-email" /><button type="submit"></button></form>
+  <div id="magic-sent"><p id="magic-sent-email"></p></div>
+  <button id="btn-google"></button>
+</div>
+
+<!-- =============================================
+     APP SHELL (autenticado)
+============================================= -->
+<div id="screen-app" class="screen hidden">
+
+  <!-- Sidebar desktop -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-icon-sm">💰</div>
+      <div>
+        <p class="font-bold text-sm">Coach Finanzas</p>
+        <p class="text-muted text-xs">Tu entrenador financiero</p>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-link active" data-page="dashboard">🏠 Dashboard</a>
+      <a href="#" class="nav-link" data-page="transactions">📋 Movimientos</a>
+      <a href="#" class="nav-link" data-page="goals">🎯 Metas</a>
+      <a href="#" class="nav-link" data-page="debts">💳 Deudas</a>
+      <a href="#" class="nav-link" data-page="calendar">📅 Calendario</a>
+      <a href="#" class="nav-link" data-page="insights">📈 Análisis</a>
+      <a href="#" class="nav-link" data-page="profile">👤 Perfil</a>
+    </nav>
+    <div class="sidebar-footer">
+      <button id="sidebar-fab" class="btn btn-primary btn-full">+ Registrar gasto</button>
+    </div>
+  </aside>
+
+  <!-- Contenido principal -->
+  <main class="main-content">
+
+    <!-- PAGE: DASHBOARD -->
+    <div id="page-dashboard" class="page active">
+      <div class="page-inner">
+        <!-- Hero card -->
+        <div class="hero-card">
+          <div class="hero-bg"></div>
+          <p class="hero-label">Balance disponible</p>
+          <div class="hero-amount">
+            <span class="hero-currency">S/</span>
+            <span id="hero-balance">0.00</span>
+          </div>
+          <p id="hero-delta" class="hero-delta"></p>
+          <canvas id="chart-sparkline" height="60"></canvas>
+        </div>
+
+        <!-- Cards resumen -->
+        <div class="stats-grid">
+          <div class="stat-card income">
+            <p class="stat-label">Ingresos</p>
+            <p class="stat-value" id="stat-income">S/ 0</p>
+          </div>
+          <div class="stat-card expense">
+            <p class="stat-label">Gastos</p>
+            <p class="stat-value" id="stat-expenses">S/ 0</p>
+          </div>
+          <div class="stat-card savings">
+            <p class="stat-label">Ahorro</p>
+            <p class="stat-value" id="stat-savings">S/ 0</p>
+          </div>
+        </div>
+
+        <!-- Insights -->
+        <div id="dashboard-insights" class="insights-container"></div>
+
+        <!-- Donut -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Gastos por categoría</h3>
+          </div>
+          <div class="card-body">
+            <div class="donut-container">
+              <canvas id="chart-donut" width="160" height="160"></canvas>
+              <div class="donut-legend" id="donut-legend"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Últimas transacciones -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Últimos movimientos</h3>
+            <a href="#" class="link text-sm" data-page="transactions">Ver todos →</a>
+          </div>
+          <div class="card-body">
+            <div id="recent-transactions" class="tx-list">
+              <p class="text-muted text-center py-4">Registra tu primer gasto con el botón +</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: TRANSACTIONS -->
+    <div id="page-transactions" class="page hidden">
+      <div class="page-inner">
+        <h1 class="page-title">Movimientos</h1>
+
+        <!-- Navegador de mes -->
+        <div class="month-nav">
+          <button id="prev-month" class="btn-icon">‹</button>
+          <span id="current-month-label" class="font-medium"></span>
+          <button id="next-month" class="btn-icon">›</button>
+        </div>
+
+        <!-- Resumen del mes -->
+        <div class="stats-grid">
+          <div class="stat-card income">
+            <p class="stat-label">Ingresos</p>
+            <p class="stat-value" id="tx-income">S/ 0</p>
+          </div>
+          <div class="stat-card expense">
+            <p class="stat-label">Gastos</p>
+            <p class="stat-value" id="tx-expenses">S/ 0</p>
+          </div>
+        </div>
+
+        <!-- Búsqueda -->
+        <input type="search" id="tx-search" class="input" placeholder="🔍  Buscar transacciones..." />
+
+        <!-- Filtros tipo -->
+        <div class="filter-row" id="tx-filters">
+          <button class="filter-btn active" data-filter="all">Todos</button>
+          <button class="filter-btn" data-filter="expense">Gastos</button>
+          <button class="filter-btn" data-filter="income">Ingresos</button>
+        </div>
+
+        <!-- Lista -->
+        <div id="transactions-list" class="tx-list"></div>
+      </div>
+    </div>
+
+    <!-- PAGE: GOALS -->
+    <div id="page-goals" class="page hidden">
+      <div class="page-inner">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Metas de ahorro</h1>
+            <p id="goals-summary" class="text-muted text-sm"></p>
+          </div>
+          <button id="btn-new-goal" class="btn btn-primary btn-sm">+ Nueva</button>
+        </div>
+        <div id="goals-list"></div>
+      </div>
+    </div>
+
+    <!-- PAGE: DEBTS -->
+    <div id="page-debts" class="page hidden">
+      <div class="page-inner">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Deudas</h1>
+            <p id="debts-summary" class="text-muted text-sm"></p>
+          </div>
+          <button id="btn-new-debt" class="btn btn-primary btn-sm">+ Nueva</button>
+        </div>
+        <div id="debts-list"></div>
+      </div>
+    </div>
+
+    <!-- PAGE: CALENDAR -->
+    <div id="page-calendar" class="page hidden">
+      <div class="page-inner">
+        <h1 class="page-title">Calendario financiero</h1>
+        <div class="month-nav">
+          <button id="cal-prev-month" class="btn-icon">‹</button>
+          <span id="cal-month-label" class="font-medium"></span>
+          <button id="cal-next-month" class="btn-icon">›</button>
+        </div>
+        <div class="calendar-grid" id="calendar-grid"></div>
+        <div class="legend-row">
+          <span class="legend-item"><span class="dot green"></span>Bajo</span>
+          <span class="legend-item"><span class="dot amber"></span>Medio</span>
+          <span class="legend-item"><span class="dot red"></span>Alto</span>
+        </div>
+        <div id="cal-day-detail" class="card hidden">
+          <div class="card-header">
+            <h3 id="cal-day-title" class="card-title"></h3>
+            <span id="cal-day-total" class="text-rose font-mono"></span>
+          </div>
+          <div class="card-body">
+            <div id="cal-day-transactions" class="tx-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: INSIGHTS -->
+    <div id="page-insights" class="page hidden">
+      <div class="page-inner">
+        <h1 class="page-title">Análisis financiero</h1>
+
+        <!-- Score -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Score financiero</h3></div>
+          <div class="card-body">
+            <div class="score-container">
+              <div class="score-gauge">
+                <svg viewBox="0 0 100 100" width="120" height="120">
+                  <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border)" stroke-width="10"/>
+                  <circle id="score-arc" cx="50" cy="50" r="40" fill="none" stroke="#10B981" stroke-width="10"
+                    stroke-dasharray="251.2" stroke-dashoffset="251.2"
+                    stroke-linecap="round" transform="rotate(-90 50 50)"/>
+                </svg>
+                <div class="score-center">
+                  <span id="score-grade" class="score-grade">-</span>
+                  <span id="score-value" class="score-value">0/100</span>
+                </div>
+              </div>
+              <div class="score-breakdown" id="score-breakdown"></div>
+            </div>
+            <p id="score-message" class="text-muted text-sm text-center mt-3"></p>
+          </div>
+        </div>
+
+        <!-- Proyección -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Proyección fin de mes</h3></div>
+          <div class="card-body">
+            <div class="stats-grid">
+              <div class="stat-card expense">
+                <p class="stat-label">Gastos proyectados</p>
+                <p class="stat-value" id="proj-expenses">S/ 0</p>
+              </div>
+              <div class="stat-card" id="proj-savings-card">
+                <p class="stat-label">Ahorro estimado</p>
+                <p class="stat-value" id="proj-savings">S/ 0</p>
+              </div>
+            </div>
+            <p id="proj-confidence" class="text-muted text-sm text-center mt-2"></p>
+          </div>
+        </div>
+
+        <!-- Gráfico semanal -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Ingresos vs Gastos por semana</h3></div>
+          <div class="card-body">
+            <canvas id="chart-weekly" height="150"></canvas>
+          </div>
+        </div>
+
+        <!-- Simulador -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Simulador de ahorro</h3></div>
+          <div class="card-body">
+            <p class="text-muted text-sm mb-2">¿En qué categoría quieres reducir gastos?</p>
+            <div id="sim-categories" class="filter-row flex-wrap"></div>
+            <div id="sim-controls" class="hidden mt-3">
+              <div class="sim-slider-row">
+                <label class="text-sm text-muted" id="sim-label">Reducir un 20%</label>
+              </div>
+              <input type="range" id="sim-slider" min="5" max="100" step="5" value="20" class="slider" />
+              <div id="sim-result" class="sim-result hidden"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Todos los insights -->
+        <div id="all-insights" class="insights-container"></div>
+      </div>
+    </div>
+
+    <!-- PAGE: PROFILE -->
+    <div id="page-profile" class="page hidden">
+      <div class="page-inner">
+        <!-- Avatar -->
+        <div class="profile-header">
+          <div class="avatar" id="profile-avatar">👤</div>
+          <h1 id="profile-name" class="font-bold text-xl"></h1>
+          <p id="profile-email" class="text-muted text-sm"></p>
+          <div id="profile-badge" class="badge hidden"></div>
+        </div>
+
+        <!-- Racha -->
+        <div class="card">
+          <div class="card-body flex-row gap-4">
+            <div class="streak-icon">🔥</div>
+            <div class="flex-1">
+              <p id="streak-current" class="text-2xl font-bold text-amber">0</p>
+              <p class="text-muted text-xs">días consecutivos</p>
+            </div>
+            <div class="text-right">
+              <p id="streak-longest" class="font-bold">0</p>
+              <p class="text-muted text-xs">récord</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Logros -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🏆 Logros</h3>
+            <span id="achievements-count" class="text-muted text-sm"></span>
+          </div>
+          <div class="card-body">
+            <div id="achievements-grid" class="achievements-grid"></div>
+          </div>
+        </div>
+
+        <!-- Config -->
+        <div class="card">
+          <div class="card-body divide-y">
+            <div class="config-row">
+              <span>🌙 Tema oscuro</span>
+              <button id="theme-toggle" class="toggle active"></button>
+            </div>
+          </div>
+        </div>
+
+        <button id="btn-logout" class="btn btn-outline btn-full text-rose">
+          🚪 Cerrar sesión
+        </button>
+      </div>
+    </div>
+
+  </main><!-- /main-content -->
+
+  <!-- Bottom tab bar (móvil) -->
+  <nav class="bottom-nav">
+    <a href="#" class="tab active" data-page="dashboard">
+      <span class="tab-icon">🏠</span>
+      <span class="tab-label">Inicio</span>
+    </a>
+    <a href="#" class="tab" data-page="transactions">
+      <span class="tab-icon">📋</span>
+      <span class="tab-label">Movimientos</span>
+    </a>
+    <button id="fab" class="fab">
+      <span class="fab-icon">+</span>
+    </button>
+    <a href="#" class="tab" data-page="goals">
+      <span class="tab-icon">🎯</span>
+      <span class="tab-label">Metas</span>
+    </a>
+    <a href="#" class="tab" data-page="insights">
+      <span class="tab-icon">📈</span>
+      <span class="tab-label">Análisis</span>
+    </a>
+  </nav>
+
+</div><!-- /screen-app -->
+
+<!-- =============================================
+     MODAL: QUICK ADD (registro rápido)
+============================================= -->
+<div id="overlay-quickadd" class="overlay hidden">
+  <div class="sheet" id="sheet-quickadd">
+    <div class="sheet-handle"></div>
+
+    <!-- Tipo de transacción -->
+    <div class="sheet-header">
+      <div class="type-pills">
+        <button class="type-pill active" data-type="expense">Gasto</button>
+        <button class="type-pill" data-type="income">Ingreso</button>
+        <button class="type-pill" data-type="transfer">Transfer</button>
+      </div>
+      <button id="btn-close-quickadd" class="btn-icon">✕</button>
+    </div>
+
+    <!-- Monto -->
+    <div class="amount-display">
+      <span class="amount-currency">S/</span>
+      <span id="amount-value" class="amount-number">0</span>
+    </div>
+
+    <!-- Categorías -->
+    <div class="categories-scroll" id="quickadd-categories"></div>
+
+    <!-- Nota opcional -->
+    <div class="note-section">
+      <button id="btn-add-note" class="btn-ghost text-sm">+ Agregar nota</button>
+      <input type="text" id="quickadd-note" class="input hidden" placeholder="¿Para qué fue este gasto?" maxlength="100" />
+    </div>
+
+    <!-- Numpad -->
+    <div class="numpad">
+      <button class="numpad-key" data-key="7">7</button>
+      <button class="numpad-key" data-key="8">8</button>
+      <button class="numpad-key" data-key="9">9</button>
+      <button class="numpad-key" data-key="4">4</button>
+      <button class="numpad-key" data-key="5">5</button>
+      <button class="numpad-key" data-key="6">6</button>
+      <button class="numpad-key" data-key="1">1</button>
+      <button class="numpad-key" data-key="2">2</button>
+      <button class="numpad-key" data-key="3">3</button>
+      <button class="numpad-key" data-key=".">.</button>
+      <button class="numpad-key" data-key="0">0</button>
+      <button class="numpad-key numpad-del" data-key="del">⌫</button>
+    </div>
+
+    <!-- Guardar -->
+    <div class="sheet-footer">
+      <button id="btn-save-transaction" class="btn btn-primary btn-full btn-xl">
+        ✓ Guardar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =============================================
+     MODAL: NUEVA META
+============================================= -->
+<div id="overlay-goal" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Nueva meta de ahorro</h2>
+      <button class="btn-icon close-modal" data-modal="goal">✕</button>
+    </div>
+    <form id="form-goal" class="modal-body">
+      <div class="icon-picker" id="goal-icon-picker"></div>
+      <div class="color-picker" id="goal-color-picker"></div>
+      <input type="text" id="goal-name" class="input" placeholder="¿Para qué estás ahorrando?" required />
+      <div class="grid-2">
+        <div>
+          <label class="label">Monto objetivo (S/)</label>
+          <input type="number" id="goal-target" class="input" placeholder="5000" min="1" required />
+        </div>
+        <div>
+          <label class="label">Ya tengo ahorrado (S/)</label>
+          <input type="number" id="goal-current" class="input" placeholder="0" min="0" value="0" />
+        </div>
+      </div>
+      <div>
+        <label class="label">Fecha límite</label>
+        <input type="date" id="goal-deadline" class="input" required />
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Crear meta</button>
+    </form>
+  </div>
+</div>
+
+<!-- =============================================
+     MODAL: APORTE A META
+============================================= -->
+<div id="overlay-contribute" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="contribute-title">Aportar a meta</h2>
+      <button class="btn-icon close-modal" data-modal="contribute">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="label">Monto a aportar (S/)</label>
+      <input type="number" id="contribute-amount" class="input" placeholder="100" min="1" />
+      <button id="btn-confirm-contribute" class="btn btn-primary btn-full mt-3">Confirmar aporte</button>
+    </div>
+  </div>
+</div>
+
+<!-- =============================================
+     MODAL: NUEVA DEUDA
+============================================= -->
+<div id="overlay-debt" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Registrar deuda</h2>
+      <button class="btn-icon close-modal" data-modal="debt">✕</button>
+    </div>
+    <form id="form-debt" class="modal-body">
+      <input type="text" id="debt-name" class="input" placeholder="Ej: Tarjeta Visa, Préstamo banco..." required />
+      <div class="grid-2">
+        <div>
+          <label class="label">Total (S/)</label>
+          <input type="number" id="debt-total" class="input" placeholder="1000" min="1" required />
+        </div>
+        <div>
+          <label class="label">Ya pagado (S/)</label>
+          <input type="number" id="debt-paid" class="input" placeholder="0" min="0" value="0" />
+        </div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <label class="label">Cuotas totales</label>
+          <input type="number" id="debt-installments" class="input" placeholder="12" min="1" value="1" />
+        </div>
+        <div>
+          <label class="label">Cuotas pagadas</label>
+          <input type="number" id="debt-paid-inst" class="input" placeholder="0" min="0" value="0" />
+        </div>
+      </div>
+      <div>
+        <label class="label">Tasa de interés anual (%)</label>
+        <input type="number" id="debt-rate" class="input" placeholder="0" min="0" step="0.1" value="0" />
+      </div>
+      <div>
+        <label class="label">Próxima fecha de pago</label>
+        <input type="date" id="debt-date" class="input" required />
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Registrar deuda</button>
+    </form>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" class="toast hidden">
+  <span id="toast-message"></span>
+</div>
+
+<!-- Scripts -->
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/analytics.js"></script>
+<script src="js/app.js"></script>
+<script>
+  // Registrar Service Worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
