@@ -11,6 +11,7 @@ const State = {
   quickAddType: 'expense',
   quickAddAmount: '0',
   quickAddCategoryId: '',
+  quickAddRecurring: false,
   selectedGoalId: null,
   selectedGoalName: '',
   selectedDebtId: null,
@@ -192,12 +193,13 @@ function renderTxList(container, txs, showDate = false) {
   }
   container.innerHTML = txs.map(tx => {
     const color = tx.category?.color ?? '#6B7280';
+    const recurring = tx.is_recurring ? '🔁 ' : '';
     const meta = [showDate?fmtDate(tx.date):'', tx.note].filter(Boolean).join(' · ');
     return `
       <div class="tx-item" data-id="${tx.id}">
         <div class="tx-icon" style="background:${color}20">${tx.category?.icon??'💸'}</div>
         <div class="tx-info">
-          <p class="tx-name">${tx.category?.name??'Sin categoría'}</p>
+          <p class="tx-name">${recurring}${tx.category?.name??'Sin categoría'}</p>
           ${meta?`<p class="tx-meta">${meta}</p>`:''}
         </div>
         <span class="tx-amount ${tx.type}">${tx.type==='expense'?'-':tx.type==='income'?'+':''}${fmt(tx.amount)}</span>
@@ -860,6 +862,75 @@ async function loadProfile() {
       <div class="achievement-icon ${achievements.includes(a.type)?'unlocked':'locked'}">${a.icon}</div>
       <span class="achievement-label">${a.label}</span>
     </div>`).join('');
+
+  // Categorías
+  renderCategoriesList();
+
+  // Mostrar nombre editable
+  $('profile-name-edit').style.display = 'none';
+  $('profile-name').parentElement.style.display = 'flex';
+}
+
+// ---- CATEGORÍAS ----
+const CAT_COLORS = ['#F59E0B','#3B82F6','#8B5CF6','#EF4444','#EC4899','#06B6D4','#10B981','#F97316','#84CC16','#6B7280'];
+
+function renderCategoriesList() {
+  const cats = Categories.getAll();
+  const container = $('categories-list');
+  const defaultIds = ['cat-01','cat-02','cat-03','cat-04','cat-05','cat-06','cat-07','cat-08','cat-09','cat-10','cat-11','cat-12','cat-13','cat-14','cat-15'];
+  container.innerHTML = cats.map(c => `
+    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.4rem 0;">
+      <span style="width:28px;height:28px;border-radius:50%;background:${c.color}22;display:flex;align-items:center;justify-content:center;font-size:1rem;">${c.icon}</span>
+      <span style="flex:1;font-size:0.9rem;">${c.name}</span>
+      <span class="text-muted text-xs">${c.type === 'income' ? 'Ingreso' : 'Gasto'}</span>
+      ${!defaultIds.includes(c.id) ? `<button class="btn-icon text-rose btn-del-cat" data-id="${c.id}" style="font-size:0.85rem;">✕</button>` : ''}
+    </div>`).join('');
+
+  container.querySelectorAll('.btn-del-cat').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (confirm('¿Eliminar esta categoría?')) {
+        const all = lsGet('cf_categories', []).filter(c => c.id !== btn.dataset.id);
+        lsSet('cf_categories', all);
+        renderCategoriesList();
+        toast('Categoría eliminada', '');
+      }
+    });
+  });
+}
+
+function openCategoryModal() {
+  const picker = $('cat-color-picker');
+  let selectedColor = '#10B981';
+  $('cat-icon').value = '';
+  $('cat-name').value = '';
+  picker.innerHTML = CAT_COLORS.map(c => `
+    <button type="button" class="color-btn cat-color-opt ${c===selectedColor?'selected':''}"
+      data-color="${c}" style="background:${c};width:28px;height:28px;border-radius:50%;border:2px solid ${c===selectedColor?'white':'transparent'};"></button>`
+  ).join('');
+  picker.querySelectorAll('.cat-color-opt').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedColor = btn.dataset.color;
+      picker.querySelectorAll('.cat-color-opt').forEach(b => {
+        b.style.borderColor = b.dataset.color === selectedColor ? 'white' : 'transparent';
+        b.classList.toggle('selected', b.dataset.color === selectedColor);
+      });
+    });
+  });
+  $('form-category').onsubmit = (e) => {
+    e.preventDefault();
+    const name = $('cat-name').value.trim();
+    const icon = $('cat-icon').value.trim() || '🏷️';
+    const type = $('cat-type').value;
+    if (!name) return;
+    const all = lsGet('cf_categories', []);
+    all.push({ id: uid(), name, icon, color: selectedColor, type });
+    lsSet('cf_categories', all);
+    closeOverlay('overlay-category');
+    renderCategoriesList();
+    toast('Categoría creada ✓', 'success');
+    $('form-category').reset();
+  };
+  openOverlay('overlay-category');
 }
 
 // ---- QUICK ADD ----
@@ -867,10 +938,13 @@ function openQuickAdd(type = 'expense') {
   State.quickAddType = type;
   State.quickAddAmount = '0';
   State.quickAddCategoryId = '';
+  State.quickAddRecurring = false;
   $('amount-value').textContent = '0';
   $('quickadd-note').classList.add('hidden');
   $('btn-add-note').classList.remove('hidden');
   $('quickadd-note').value = '';
+  $('btn-toggle-recurring').style.color = 'var(--text-muted)';
+  $('btn-toggle-recurring').style.fontWeight = 'normal';
 
   document.querySelectorAll('.type-pill').forEach(p=>p.classList.toggle('active', p.dataset.type===type));
   loadQuickAddCategories(type);
@@ -937,7 +1011,7 @@ async function saveTransaction() {
       category_id: State.quickAddCategoryId,
       date: today(),
       note: $('quickadd-note').value || null,
-      is_recurring: false
+      is_recurring: State.quickAddRecurring
     });
     Categorizer.reinforce(amount, State.quickAddCategoryId);
     Streaks.update();
@@ -1015,6 +1089,37 @@ async function init() {
     $('quickadd-note').classList.remove('hidden');
     $('quickadd-note').focus();
   });
+
+  // Toggle recurrente
+  $('btn-toggle-recurring').addEventListener('click', () => {
+    State.quickAddRecurring = !State.quickAddRecurring;
+    $('btn-toggle-recurring').style.color    = State.quickAddRecurring ? 'var(--emerald)' : 'var(--text-muted)';
+    $('btn-toggle-recurring').style.fontWeight = State.quickAddRecurring ? '700' : 'normal';
+    $('btn-toggle-recurring').textContent    = State.quickAddRecurring ? '🔁 Fijo ✓' : '🔁 Fijo';
+  });
+
+  // -- Editar nombre perfil --
+  $('btn-edit-name').addEventListener('click', () => {
+    const nameEl  = $('profile-name');
+    const editEl  = $('profile-name-edit');
+    const inputEl = $('input-profile-name');
+    nameEl.parentElement.style.display = 'none';
+    editEl.style.display = 'flex';
+    inputEl.value = nameEl.textContent;
+    inputEl.focus();
+  });
+  $('btn-save-name').addEventListener('click', () => {
+    const newName = $('input-profile-name').value.trim();
+    if (!newName) return;
+    Profiles.update(null, { name: newName });
+    $('profile-name').textContent = newName;
+    $('profile-name').parentElement.style.display = 'flex';
+    $('profile-name-edit').style.display = 'none';
+    toast('Nombre actualizado ✓', 'success');
+  });
+
+  // -- Categorías --
+  $('btn-new-category').addEventListener('click', openCategoryModal);
 
   // -- Goals --
   // -- Presupuestos --

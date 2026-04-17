@@ -307,7 +307,14 @@
         <!-- Avatar -->
         <div class="profile-header">
           <div class="avatar" id="profile-avatar">👤</div>
-          <h1 id="profile-name" class="font-bold text-xl"></h1>
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <h1 id="profile-name" class="font-bold text-xl"></h1>
+            <button id="btn-edit-name" class="btn-icon" style="font-size:0.9rem;">✏️</button>
+          </div>
+          <div id="profile-name-edit" style="display:none;gap:0.5rem;align-items:center;">
+            <input id="input-profile-name" class="input" style="width:180px;" placeholder="Tu nombre" />
+            <button id="btn-save-name" class="btn btn-primary" style="padding:0.4rem 0.75rem;">✓</button>
+          </div>
           <p id="profile-email" class="text-muted text-sm"></p>
           <div id="profile-badge" class="badge hidden"></div>
         </div>
@@ -336,6 +343,15 @@
           <div class="card-body">
             <div id="achievements-grid" class="achievements-grid"></div>
           </div>
+        </div>
+
+        <!-- Categorías -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🏷️ Mis categorías</h3>
+            <button id="btn-new-category" class="btn btn-sm btn-ghost">+ Nueva</button>
+          </div>
+          <div class="card-body" id="categories-list" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
         </div>
 
         <!-- Config -->
@@ -420,9 +436,12 @@
     <!-- Categorías -->
     <div class="categories-scroll" id="quickadd-categories"></div>
 
-    <!-- Nota opcional -->
+    <!-- Nota y recurrente -->
     <div class="note-section">
-      <button id="btn-add-note" class="btn-ghost text-sm">+ Agregar nota</button>
+      <div style="display:flex;gap:0.5rem;align-items:center;">
+        <button id="btn-add-note" class="btn-ghost text-sm" style="flex:1;text-align:left;">+ Agregar nota</button>
+        <button id="btn-toggle-recurring" class="btn-ghost text-sm" style="color:var(--text-muted);">🔁 Fijo</button>
+      </div>
       <input type="text" id="quickadd-note" class="input hidden" placeholder="¿Para qué fue este gasto?" maxlength="100" />
     </div>
 
@@ -454,6 +473,31 @@
 <!-- =============================================
      MODAL: NUEVA META
 ============================================= -->
+<!-- Modal: Nueva categoría -->
+<div id="overlay-category" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Nueva categoría</h2>
+      <button class="btn-icon close-modal" data-modal="category">✕</button>
+    </div>
+    <form id="form-category" class="modal-body" style="display:flex;flex-direction:column;gap:0.75rem;">
+      <div style="display:flex;gap:0.75rem;align-items:center;">
+        <input id="cat-icon" class="input" style="width:64px;font-size:1.5rem;text-align:center;" placeholder="🏷️" maxlength="2" />
+        <input id="cat-name" class="input" style="flex:1;" placeholder="Nombre de la categoría" required maxlength="20" />
+      </div>
+      <select id="cat-type" class="input">
+        <option value="expense">Gasto</option>
+        <option value="income">Ingreso</option>
+      </select>
+      <div>
+        <p class="text-muted text-xs" style="margin-bottom:0.5rem;">Color</p>
+        <div id="cat-color-picker" style="display:flex;flex-wrap:wrap;gap:0.5rem;"></div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Crear categoría</button>
+    </form>
+  </div>
+</div>
+
 <!-- Modal: Editar presupuestos -->
 <div id="overlay-budgets" class="overlay hidden">
   <div class="modal">
