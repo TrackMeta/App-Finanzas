@@ -56,6 +56,7 @@ function navigate(page) {
   if (page === 'debts') loadDebts();
   if (page === 'calendar') loadCalendar();
   if (page === 'insights') loadInsights();
+  if (page === 'reports') loadReports();
   if (page === 'profile') loadProfile();
 }
 
@@ -103,6 +104,15 @@ async function loadDashboard() {
   const budgets = Budgets.getAll(State.currentMonth);
   const insights = generateInsights(txs, prevTxs, cats, budgets);
   renderInsights($('dashboard-insights'), insights.slice(0,3));
+
+  // Presupuestos en dashboard
+  const cardBudgetsDash = $('card-budgets-dash');
+  if (budgets.length) {
+    cardBudgetsDash.style.display = '';
+    renderDashBudgets(txs, cats, budgets);
+  } else {
+    cardBudgetsDash.style.display = 'none';
+  }
 
   // Gastos fijos del mes
   const recurring = txs.filter(t => t.is_recurring && t.type === 'expense');
@@ -916,6 +926,183 @@ function exportCSV() {
   toast('Descarga iniciada ✓', 'success');
 }
 
+// ---- DASH BUDGETS ----
+function renderDashBudgets(txs, cats, budgets) {
+  const container = $('dash-budgets-list');
+  const toShow = budgets.slice(0, 5);
+  container.innerHTML = toShow.map(b => {
+    const cat = cats.find(c => c.id === b.category_id);
+    if (!cat) return '';
+    const spent = txs.filter(t => t.type === 'expense' && t.category_id === b.category_id)
+                     .reduce((s, t) => s + t.amount, 0);
+    const pct   = Math.min((spent / b.monthly_limit) * 100, 100);
+    const over  = spent > b.monthly_limit;
+    const warn  = pct >= 80 && !over;
+    const color = over ? 'var(--rose)' : warn ? 'var(--amber)' : 'var(--emerald)';
+    const emoji = over ? '🔴' : warn ? '🟡' : '🟢';
+    return `
+      <div style="padding:0.45rem 0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:0.85rem;">${emoji} ${cat.icon} ${cat.name}</span>
+          <span style="font-size:0.75rem;color:${color};font-family:monospace;">
+            ${fmt(spent,true)} / ${fmt(b.monthly_limit,true)}
+          </span>
+        </div>
+        <div style="background:var(--bg-secondary);border-radius:99px;height:5px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${color};border-radius:99px;transition:width 0.4s;"></div>
+        </div>
+      </div>`;
+  }).join('');
+  if (budgets.length > 5) {
+    container.innerHTML += `<p class="text-muted text-xs text-center" style="padding-top:0.3rem;">+${budgets.length - 5} más en Análisis</p>`;
+  }
+}
+
+// ---- REPORTS PAGE ----
+let _reportRange = 6;
+
+async function loadReports() {
+  // Filtros de rango
+  const filterBtns = document.querySelectorAll('[data-range]');
+  filterBtns.forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.range) === _reportRange);
+    btn.onclick = () => {
+      _reportRange = parseInt(btn.dataset.range);
+      filterBtns.forEach(b => b.classList.toggle('active', b === btn));
+      renderReports();
+    };
+  });
+  renderReports();
+}
+
+async function renderReports() {
+  const n = _reportRange;
+  const months = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    months.push(d.toISOString().slice(0, 7));
+  }
+
+  $('report-range-label').textContent =
+    `${fmtMonth(months[0])} – ${fmtMonth(months[months.length - 1])}`;
+
+  const monthsData = await Promise.all(months.map(m => Transactions.getByMonth(m)));
+  const cats = Categories.getAll();
+
+  const labels      = months.map(m => {
+    const [y, mo] = m.split('-');
+    return new Date(y, mo - 1, 1).toLocaleDateString('es-PE', { month: 'short', year:'2-digit' });
+  });
+  const incomeData  = monthsData.map(txs => txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0));
+  const expenseData = monthsData.map(txs => txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0));
+  const savingsData = monthsData.map((_, i) => Math.max(0, incomeData[i] - expenseData[i]));
+
+  // Chart: barras ingresos vs gastos
+  const ctx = $('chart-monthly').getContext('2d');
+  if (State.charts.monthly) State.charts.monthly.destroy();
+  State.charts.monthly = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Ingresos',  data: incomeData,  backgroundColor: 'rgba(16,185,129,0.75)', borderRadius: 5 },
+        { label: 'Gastos',    data: expenseData, backgroundColor: 'rgba(244,63,94,0.75)',  borderRadius: 5 },
+      ]
+    },
+    options: {
+      plugins: { legend: { labels: { color: '#71717a', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#71717a', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#71717a', callback: v => fmt(v, true) }, grid: { color: 'rgba(255,255,255,0.05)' } }
+      }
+    }
+  });
+
+  // Chart: tendencia ahorro
+  const ctx2 = $('chart-savings-trend').getContext('2d');
+  if (State.charts.savingsTrend) State.charts.savingsTrend.destroy();
+  State.charts.savingsTrend = new Chart(ctx2, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Ahorro', data: savingsData,
+        borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.15)',
+        fill: true, tension: 0.4, pointRadius: 4, borderWidth: 2,
+        pointBackgroundColor: '#3B82F6'
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#71717a', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#71717a', callback: v => fmt(v, true) }, grid: { color: 'rgba(255,255,255,0.05)' } }
+      }
+    }
+  });
+
+  // Resumen del periodo
+  const totalIncome   = incomeData.reduce((s, v) => s + v, 0);
+  const totalExpenses = expenseData.reduce((s, v) => s + v, 0);
+  const totalSavings  = totalIncome - totalExpenses;
+  const avgExpense    = totalExpenses / n;
+  const nonZeroExp    = expenseData.filter(v => v > 0);
+  const bestIdx       = expenseData.indexOf(Math.min(...(nonZeroExp.length ? nonZeroExp : [0])));
+  const worstIdx      = expenseData.indexOf(Math.max(...expenseData));
+
+  $('report-summary').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+      <div class="stat-card income" style="padding:0.75rem;">
+        <p class="stat-label">Ingresos totales</p>
+        <p class="stat-value" style="font-size:1rem;">${fmt(totalIncome, true)}</p>
+      </div>
+      <div class="stat-card expense" style="padding:0.75rem;">
+        <p class="stat-label">Gastos totales</p>
+        <p class="stat-value" style="font-size:1rem;">${fmt(totalExpenses, true)}</p>
+      </div>
+      <div class="stat-card ${totalSavings >= 0 ? 'savings' : 'expense'}" style="padding:0.75rem;">
+        <p class="stat-label">Ahorro total</p>
+        <p class="stat-value" style="font-size:1rem;">
+          ${totalSavings < 0 ? '-' : ''}${fmt(Math.abs(totalSavings), true)}
+          ${totalSavings < 0 ? '<small style="font-size:0.65rem;display:block;">déficit</small>' : ''}
+        </p>
+      </div>
+      <div class="stat-card" style="padding:0.75rem;background:var(--bg-secondary);">
+        <p class="stat-label">Gasto promedio/mes</p>
+        <p class="stat-value" style="font-size:1rem;">${fmt(avgExpense, true)}</p>
+      </div>
+    </div>
+    ${nonZeroExp.length && bestIdx >= 0 ? `<p class="text-muted text-xs">✅ Mes más económico: <strong style="color:var(--emerald)">${fmtMonth(months[bestIdx])}</strong></p>` : ''}
+    ${expenseData.some(v => v > 0) ? `<p class="text-muted text-xs">⚠️ Mes con más gastos: <strong style="color:var(--rose)">${fmtMonth(months[worstIdx])}</strong></p>` : ''}`;
+
+  // Top categorías
+  const allTxs = monthsData.flat();
+  const byCat  = {};
+  allTxs.filter(t => t.type === 'expense').forEach(t => {
+    if (t.category_id) byCat[t.category_id] = (byCat[t.category_id] || 0) + t.amount;
+  });
+  const totalCatExp = Object.values(byCat).reduce((s, v) => s + v, 0);
+  const topCats     = Object.entries(byCat).sort(([, a], [, b]) => b - a).slice(0, 6);
+
+  $('report-top-cats').innerHTML = topCats.length ? topCats.map(([id, amount]) => {
+    const cat   = cats.find(c => c.id === id);
+    const pct   = totalCatExp > 0 ? ((amount / totalCatExp) * 100).toFixed(0) : 0;
+    const color = cat?.color ?? '#6B7280';
+    return `
+      <div style="padding:0.45rem 0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:0.875rem;">${cat?.icon ?? '💸'} ${cat?.name ?? 'Otros'}</span>
+          <span style="font-size:0.8rem;color:${color};font-weight:600;">${fmt(amount, true)} · ${pct}%</span>
+        </div>
+        <div style="background:var(--bg-secondary);border-radius:99px;height:6px;overflow:hidden;">
+          <div style="width:${pct}%;height:100%;background:${color};border-radius:99px;"></div>
+        </div>
+      </div>`;
+  }).join('') : '<p class="text-muted text-sm">Sin gastos en el periodo</p>';
+}
+
 // ---- PROFILE PAGE ----
 async function loadProfile() {
   if (!State.user) return;
@@ -1042,6 +1229,7 @@ function openQuickAdd(type = 'expense') {
   $('quickadd-note').value = '';
   $('btn-toggle-recurring').style.color = 'var(--text-muted)';
   $('btn-toggle-recurring').style.fontWeight = 'normal';
+  $('quickadd-date').value = today();
 
   document.querySelectorAll('.type-pill').forEach(p=>p.classList.toggle('active', p.dataset.type===type));
   loadQuickAddCategories(type);
@@ -1106,7 +1294,7 @@ async function saveTransaction() {
       type: State.quickAddType,
       amount,
       category_id: State.quickAddCategoryId,
-      date: today(),
+      date: $('quickadd-date').value || today(),
       note: $('quickadd-note').value || null,
       is_recurring: State.quickAddRecurring
     });

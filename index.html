@@ -49,6 +49,7 @@
       <a href="#" class="nav-link" data-page="debts">💳 Deudas</a>
       <a href="#" class="nav-link" data-page="calendar">📅 Calendario</a>
       <a href="#" class="nav-link" data-page="insights">📈 Análisis</a>
+      <a href="#" class="nav-link" data-page="reports">📊 Reportes</a>
       <a href="#" class="nav-link" data-page="profile">👤 Perfil</a>
     </nav>
     <div class="sidebar-footer">
@@ -106,6 +107,15 @@
           </div>
         </div>
 
+        <!-- Resumen de presupuestos -->
+        <div class="card" id="card-budgets-dash" style="display:none;">
+          <div class="card-header">
+            <h3 class="card-title">💰 Presupuestos del mes</h3>
+            <a href="#" class="link text-sm" data-page="insights">Configurar →</a>
+          </div>
+          <div class="card-body" id="dash-budgets-list" style="display:flex;flex-direction:column;gap:0.25rem;padding-bottom:0.5rem;"></div>
+        </div>
+
         <!-- Gastos fijos del mes -->
         <div class="card" id="card-recurring" style="display:none;">
           <div class="card-header">
@@ -117,6 +127,18 @@
           </div>
         </div>
 
+        <!-- Acceso rápido a Reportes (móvil) -->
+        <a href="#" class="card" data-page="reports" style="display:flex;align-items:center;justify-content:space-between;padding:0.875rem 1rem;cursor:pointer;text-decoration:none;color:inherit;">
+          <div style="display:flex;align-items:center;gap:0.75rem;">
+            <span style="font-size:1.5rem;">📊</span>
+            <div>
+              <p class="font-bold text-sm">Ver reportes</p>
+              <p class="text-muted text-xs">Últimos 6 meses · tendencias</p>
+            </div>
+          </div>
+          <span class="text-muted">›</span>
+        </a>
+
         <!-- Últimas transacciones -->
         <div class="card">
           <div class="card-header">
@@ -127,6 +149,48 @@
             <div id="recent-transactions" class="tx-list">
               <p class="text-muted text-center py-4">Registra tu primer gasto con el botón +</p>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: REPORTS -->
+    <div id="page-reports" class="page hidden">
+      <div class="page-inner">
+        <div class="page-header">
+          <h1 class="page-title">📊 Reportes</h1>
+          <div id="report-range-label" class="text-muted text-sm"></div>
+        </div>
+
+        <!-- Selector de rango -->
+        <div class="filter-row">
+          <button class="filter-btn active" data-range="6">6 meses</button>
+          <button class="filter-btn" data-range="3">3 meses</button>
+          <button class="filter-btn" data-range="12">12 meses</button>
+        </div>
+
+        <!-- Gráfico mensual ingresos vs gastos -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Ingresos vs Gastos</h3></div>
+          <div class="card-body">
+            <canvas id="chart-monthly" height="180"></canvas>
+          </div>
+        </div>
+
+        <!-- Resumen del periodo -->
+        <div id="report-summary"></div>
+
+        <!-- Top categorías -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Top categorías del periodo</h3></div>
+          <div class="card-body" id="report-top-cats"></div>
+        </div>
+
+        <!-- Tendencia de ahorro -->
+        <div class="card">
+          <div class="card-header"><h3 class="card-title">Tendencia de ahorro</h3></div>
+          <div class="card-body">
+            <canvas id="chart-savings-trend" height="140"></canvas>
           </div>
         </div>
       </div>
@@ -458,6 +522,11 @@
         <button id="btn-toggle-recurring" class="btn-ghost text-sm" style="color:var(--text-muted);">🔁 Fijo</button>
       </div>
       <input type="text" id="quickadd-note" class="input hidden" placeholder="¿Para qué fue este gasto?" maxlength="100" />
+      <!-- Fecha del gasto -->
+      <div style="display:flex;align-items:center;gap:0.5rem;padding-top:0.25rem;">
+        <span style="font-size:0.85rem;color:var(--text-muted);">📅</span>
+        <input type="date" id="quickadd-date" class="input" style="flex:1;font-size:0.85rem;padding:0.35rem 0.6rem;" />
+      </div>
     </div>
 
     <!-- Numpad -->
