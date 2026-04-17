@@ -819,3 +819,51 @@ html, body {
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* =============================================
+   PRINT / PDF
+============================================= */
+#print-report { display: none; }
+
+@media print {
+  /* Ocultar toda la app */
+  body > * { display: none !important; }
+  /* Mostrar solo el reporte */
+  #print-report { display: block !important; }
+
+  /* Reset para impresión */
+  body { background: white !important; color: #111 !important; font-family: -apple-system, sans-serif; }
+
+  .pr-page { max-width: 680px; margin: 0 auto; padding: 2rem; }
+
+  .pr-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid #10B981; }
+  .pr-logo { font-size: 1.5rem; font-weight: 800; color: #10B981; }
+  .pr-month { font-size: 0.9rem; color: #555; text-align: right; }
+
+  .pr-section { margin-bottom: 1.5rem; }
+  .pr-section-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin-bottom: 0.6rem; }
+
+  .pr-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+  .pr-stat { background: #f5f5f7; border-radius: 10px; padding: 0.75rem; }
+  .pr-stat-label { font-size: 0.7rem; color: #777; margin-bottom: 2px; }
+  .pr-stat-value { font-size: 1.2rem; font-weight: 700; }
+  .pr-stat.income .pr-stat-value { color: #059669; }
+  .pr-stat.expense .pr-stat-value { color: #E11D48; }
+  .pr-stat.savings .pr-stat-value { color: #2563EB; }
+
+  .pr-budget-row { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0; border-bottom: 1px solid #eee; font-size: 0.85rem; }
+  .pr-budget-bar-bg { height: 4px; background: #eee; border-radius: 99px; margin-top: 3px; }
+  .pr-budget-bar { height: 4px; border-radius: 99px; }
+
+  .pr-cat-row { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.85rem; }
+
+  .pr-tx-group { margin-bottom: 0.5rem; }
+  .pr-tx-date { font-size: 0.7rem; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.3rem 0; }
+  .pr-tx-row { display: flex; justify-content: space-between; padding: 0.25rem 0; font-size: 0.82rem; border-bottom: 1px solid #f5f5f5; }
+  .pr-tx-amount.expense { color: #E11D48; }
+  .pr-tx-amount.income  { color: #059669; }
+
+  .pr-footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ddd; font-size: 0.7rem; color: #aaa; text-align: center; }
+
+  @page { margin: 1.5cm; size: A4; }
+}

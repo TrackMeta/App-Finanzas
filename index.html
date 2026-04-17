@@ -159,8 +159,9 @@
       <div class="page-inner">
         <div class="page-header">
           <h1 class="page-title">📊 Reportes</h1>
-          <div id="report-range-label" class="text-muted text-sm"></div>
+          <button id="btn-export-pdf-reports" class="btn btn-sm btn-outline">🖨️ PDF</button>
         </div>
+        <div id="report-range-label" class="text-muted text-sm" style="margin-top:-0.5rem;"></div>
 
         <!-- Selector de rango -->
         <div class="filter-row">
@@ -450,8 +451,12 @@
                 class="input" style="width:110px;padding:0.3rem 0.5rem;font-size:0.9rem;" />
             </div>
             <div class="config-row" style="cursor:pointer;" id="btn-export-csv">
-              <span>📤 Exportar mis datos</span>
+              <span>📤 Exportar datos</span>
               <span class="text-muted text-sm">CSV →</span>
+            </div>
+            <div class="config-row" style="cursor:pointer;" id="btn-export-pdf">
+              <span>🖨️ Resumen mensual</span>
+              <span class="text-muted text-sm">PDF →</span>
             </div>
           </div>
         </div>
@@ -712,6 +717,9 @@
     </form>
   </div>
 </div>
+
+<!-- Reporte imprimible (invisible hasta window.print()) -->
+<div id="print-report"></div>
 
 <!-- Toast notification -->
 <div id="toast" class="toast hidden">

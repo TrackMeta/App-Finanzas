@@ -1103,6 +1103,133 @@ async function renderReports() {
   }).join('') : '<p class="text-muted text-sm">Sin gastos en el periodo</p>';
 }
 
+// ---- EXPORTAR PDF ----
+async function exportPDF() {
+  const txs     = Transactions.getByMonth(State.currentMonth);
+  const cats    = Categories.getAll();
+  const budgets = Budgets.getAll(State.currentMonth);
+  const profile = Profiles.get();
+
+  const { income, expenses, savings } = calcMonthStats(txs);
+  const monthLabel = fmtMonth(State.currentMonth);
+
+  // --- Resumen de presupuestos ---
+  const budgetRows = budgets.map(b => {
+    const cat   = cats.find(c => c.id === b.category_id);
+    if (!cat) return '';
+    const spent = txs.filter(t => t.type === 'expense' && t.category_id === b.category_id)
+                     .reduce((s, t) => s + t.amount, 0);
+    const pct   = Math.min((spent / b.monthly_limit) * 100, 100).toFixed(0);
+    const over  = spent > b.monthly_limit;
+    const color = over ? '#E11D48' : pct >= 80 ? '#D97706' : '#059669';
+    return `
+      <div class="pr-budget-row">
+        <span>${cat.icon} ${cat.name}</span>
+        <span style="color:${color};font-weight:600;">${fmt(spent)} / ${fmt(b.monthly_limit)}</span>
+      </div>
+      <div class="pr-budget-bar-bg">
+        <div class="pr-budget-bar" style="width:${pct}%;background:${color};"></div>
+      </div>`;
+  }).join('');
+
+  // --- Top categorías ---
+  const byCat = {};
+  txs.filter(t => t.type === 'expense').forEach(t => {
+    if (t.category_id) byCat[t.category_id] = (byCat[t.category_id] || 0) + t.amount;
+  });
+  const topCats = Object.entries(byCat).sort(([, a], [, b]) => b - a).slice(0, 8);
+  const catRows = topCats.map(([id, amount]) => {
+    const cat = cats.find(c => c.id === id);
+    return `<div class="pr-cat-row">
+      <span>${cat?.icon ?? ''} ${cat?.name ?? 'Otros'}</span>
+      <span style="color:#E11D48;font-weight:600;">-${fmt(amount)}</span>
+    </div>`;
+  }).join('');
+
+  // --- Transacciones agrupadas por fecha ---
+  const groups = {};
+  txs.forEach(t => { groups[t.date] = groups[t.date] || []; groups[t.date].push(t); });
+  const txRows = Object.entries(groups)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, items]) => {
+      const dLabel = new Date(date + 'T00:00:00')
+        .toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
+      const rows = items.map(t => {
+        const cat   = cats.find(c => c.id === t.category_id);
+        const sign  = t.type === 'expense' ? '-' : '+';
+        const color = t.type === 'expense' ? 'expense' : 'income';
+        return `<div class="pr-tx-row">
+          <span>${cat?.icon ?? ''} ${cat?.name ?? 'Sin categoría'}${t.note ? ` · ${t.note}` : ''}</span>
+          <span class="pr-tx-amount ${color}">${sign}${fmt(t.amount)}</span>
+        </div>`;
+      }).join('');
+      return `<div class="pr-tx-group">
+        <div class="pr-tx-date">${dLabel}</div>
+        ${rows}
+      </div>`;
+    }).join('');
+
+  // --- Armar HTML del reporte ---
+  $('print-report').innerHTML = `
+    <div class="pr-page">
+      <div class="pr-header">
+        <div>
+          <div class="pr-logo">💰 Coach Finanzas</div>
+          <div style="font-size:0.8rem;color:#555;margin-top:2px;">Resumen financiero mensual</div>
+        </div>
+        <div class="pr-month">
+          <strong>${profile.name || 'Usuario'}</strong><br>
+          ${monthLabel}<br>
+          <span style="color:#aaa;">Generado ${new Date().toLocaleDateString('es-PE')}</span>
+        </div>
+      </div>
+
+      <div class="pr-section">
+        <div class="pr-section-title">Resumen del mes</div>
+        <div class="pr-stats">
+          <div class="pr-stat income">
+            <div class="pr-stat-label">Ingresos</div>
+            <div class="pr-stat-value">${fmt(income)}</div>
+          </div>
+          <div class="pr-stat expense">
+            <div class="pr-stat-label">Gastos</div>
+            <div class="pr-stat-value">${fmt(expenses)}</div>
+          </div>
+          <div class="pr-stat savings">
+            <div class="pr-stat-label">${savings >= 0 ? 'Ahorro' : 'Déficit'}</div>
+            <div class="pr-stat-value">${fmt(Math.abs(savings))}</div>
+          </div>
+        </div>
+      </div>
+
+      ${budgetRows ? `
+      <div class="pr-section">
+        <div class="pr-section-title">Presupuestos del mes</div>
+        ${budgetRows}
+      </div>` : ''}
+
+      ${catRows ? `
+      <div class="pr-section">
+        <div class="pr-section-title">Gastos por categoría</div>
+        ${catRows}
+      </div>` : ''}
+
+      <div class="pr-section">
+        <div class="pr-section-title">Detalle de movimientos (${txs.length})</div>
+        ${txRows || '<p style="color:#aaa;font-size:0.85rem;">Sin movimientos este mes</p>'}
+      </div>
+
+      <div class="pr-footer">
+        Coach Finanzas · Reporte generado automáticamente · ${new Date().toLocaleString('es-PE')}
+      </div>
+    </div>`;
+
+  // Pequeña pausa para que el DOM se actualice, luego imprimir
+  setTimeout(() => {
+    window.print();
+  }, 150);
+}
+
 // ---- PROFILE PAGE ----
 async function loadProfile() {
   if (!State.user) return;
@@ -1416,6 +1543,11 @@ async function init() {
 
       case 'btn-export-csv':
         exportCSV();
+        break;
+
+      case 'btn-export-pdf':
+      case 'btn-export-pdf-reports':
+        exportPDF();
         break;
 
       case 'btn-save-edit-tx':
