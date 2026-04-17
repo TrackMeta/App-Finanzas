@@ -1090,36 +1090,50 @@ async function init() {
     $('quickadd-note').focus();
   });
 
-  // Toggle recurrente
-  $('btn-toggle-recurring').addEventListener('click', () => {
-    State.quickAddRecurring = !State.quickAddRecurring;
-    $('btn-toggle-recurring').style.color    = State.quickAddRecurring ? 'var(--emerald)' : 'var(--text-muted)';
-    $('btn-toggle-recurring').style.fontWeight = State.quickAddRecurring ? '700' : 'normal';
-    $('btn-toggle-recurring').textContent    = State.quickAddRecurring ? '🔁 Fijo ✓' : '🔁 Fijo';
-  });
+  // -- Event delegation: captura clicks de botones dinámicos --
+  document.addEventListener('click', e => {
+    const t = e.target.closest('[id]');
+    if (!t) return;
+    switch (t.id) {
 
-  // -- Editar nombre perfil --
-  $('btn-edit-name').addEventListener('click', () => {
-    const nameEl  = $('profile-name');
-    const editEl  = $('profile-name-edit');
-    const inputEl = $('input-profile-name');
-    nameEl.parentElement.style.display = 'none';
-    editEl.style.display = 'flex';
-    inputEl.value = nameEl.textContent;
-    inputEl.focus();
-  });
-  $('btn-save-name').addEventListener('click', () => {
-    const newName = $('input-profile-name').value.trim();
-    if (!newName) return;
-    Profiles.update(null, { name: newName });
-    $('profile-name').textContent = newName;
-    $('profile-name').parentElement.style.display = 'flex';
-    $('profile-name-edit').style.display = 'none';
-    toast('Nombre actualizado ✓', 'success');
-  });
+      case 'btn-toggle-recurring': {
+        State.quickAddRecurring = !State.quickAddRecurring;
+        t.style.color      = State.quickAddRecurring ? 'var(--emerald)' : 'var(--text-muted)';
+        t.style.fontWeight = State.quickAddRecurring ? '700' : 'normal';
+        t.textContent      = State.quickAddRecurring ? '🔁 Fijo ✓' : '🔁 Fijo';
+        break;
+      }
 
-  // -- Categorías --
-  $('btn-new-category').addEventListener('click', openCategoryModal);
+      case 'btn-edit-name': {
+        const wrap = $('profile-name').parentElement;
+        wrap.style.display = 'none';
+        const editEl = $('profile-name-edit');
+        editEl.style.display = 'flex';
+        $('input-profile-name').value = $('profile-name').textContent;
+        $('input-profile-name').focus();
+        break;
+      }
+
+      case 'btn-save-name': {
+        const newName = $('input-profile-name').value.trim();
+        if (!newName) return;
+        Profiles.update(null, { name: newName });
+        $('profile-name').textContent = newName;
+        $('profile-name').parentElement.style.display = 'flex';
+        $('profile-name-edit').style.display = 'none';
+        toast('Nombre actualizado ✓', 'success');
+        break;
+      }
+
+      case 'btn-new-category':
+        openCategoryModal();
+        break;
+
+      case 'btn-export-csv':
+        exportCSV();
+        break;
+    }
+  });
 
   // -- Goals --
   // -- Presupuestos --
@@ -1251,9 +1265,8 @@ async function init() {
     $('theme-toggle').classList.toggle('active', !isDark);
   });
 
-  // -- Notificaciones y exportar --
+  // -- Notificaciones --
   setupNotifications();
-  $('btn-export-csv').addEventListener('click', exportCSV);
 
   // -- Logout --
   $('btn-logout').addEventListener('click', () => {
