@@ -696,6 +696,127 @@ function updateSimResult() {
   } else result.classList.add('hidden');
 }
 
+// ---- LOGROS ----
+function checkAchievements() {
+  const txs = lsGet('cf_transactions', []);
+  const goals = Goals.getAll();
+  const streak = Streaks.get();
+
+  const unlock = (type, label, icon) => {
+    const all = Achievements.getAll();
+    if (!all.includes(type)) {
+      Achievements.unlock(type);
+      setTimeout(() => toast(`🏆 Logro desbloqueado: ${icon} ${label}`, 'success'), 400);
+    }
+  };
+
+  if (txs.length >= 1)                       unlock('first_transaction', 'Primer registro',    '📝');
+  if (goals.length >= 1)                     unlock('first_goal',        'Primera meta',        '🎯');
+  if (streak.current_streak >= 7)            unlock('streak_7',          'Racha 7 días',        '🔥');
+  if (streak.current_streak >= 30)           unlock('streak_30',         'Racha 30 días',       '💥');
+  if (streak.current_streak >= 100)          unlock('streak_100',        '100 días',            '⚡');
+  if (goals.some(g => g.current_amount >= g.target_amount)) unlock('goal_completed', 'Meta lograda', '🏆');
+
+  // Ahorrador élite: tasa de ahorro > 25% este mes
+  const month = State.currentMonth;
+  const monthTxs = lsGet('cf_transactions', []).filter(t => t.date?.startsWith(month));
+  const income   = monthTxs.filter(t => t.type === 'income').reduce((s,t) => s+t.amount, 0);
+  const expenses = monthTxs.filter(t => t.type === 'expense').reduce((s,t) => s+t.amount, 0);
+  if (income > 0 && (income - expenses) / income >= 0.25) unlock('savings_25', 'Ahorrador élite', '💎');
+}
+
+// ---- NOTIFICACIONES ----
+function setupNotifications() {
+  const enabled = localStorage.getItem('cf_notif_enabled') === 'true';
+  const time    = localStorage.getItem('cf_notif_time') || '20:00';
+  const toggle  = $('toggle-notif');
+  const timeRow = $('notif-time-row');
+  const timeIn  = $('notif-time');
+
+  toggle.classList.toggle('active', enabled);
+  timeRow.classList.toggle('hidden', !enabled);
+  timeIn.value = time;
+
+  toggle.addEventListener('click', async () => {
+    const nowEnabled = toggle.classList.contains('active');
+    if (!nowEnabled) {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { toast('Permiso de notificaciones denegado', 'error'); return; }
+      toggle.classList.add('active');
+      timeRow.classList.remove('hidden');
+      localStorage.setItem('cf_notif_enabled', 'true');
+      toast('Recordatorio activado ✓', 'success');
+      scheduleReminder();
+    } else {
+      toggle.classList.remove('active');
+      timeRow.classList.add('hidden');
+      localStorage.setItem('cf_notif_enabled', 'false');
+      toast('Recordatorio desactivado', '');
+    }
+  });
+
+  timeIn.addEventListener('change', () => {
+    localStorage.setItem('cf_notif_time', timeIn.value);
+    if (localStorage.getItem('cf_notif_enabled') === 'true') scheduleReminder();
+    toast(`Recordatorio a las ${timeIn.value} ✓`, 'success');
+  });
+
+  if (enabled) scheduleReminder();
+}
+
+function scheduleReminder() {
+  const time   = localStorage.getItem('cf_notif_time') || '20:00';
+  const [h, m] = time.split(':').map(Number);
+  const now    = new Date();
+  const fire   = new Date();
+  fire.setHours(h, m, 0, 0);
+  if (fire <= now) fire.setDate(fire.getDate() + 1);
+  const delay  = fire - now;
+
+  clearTimeout(window._reminderTimer);
+  window._reminderTimer = setTimeout(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const loggedToday = lsGet('cf_transactions', []).some(t => t.date === today);
+    if (!loggedToday && Notification.permission === 'granted') {
+      new Notification('💰 Coach Finanzas', {
+        body: '¿Registraste tus gastos de hoy? Solo toma 3 segundos.',
+        icon: 'https://placehold.co/192x192/10B981/ffffff?text=💰',
+        tag: 'daily-reminder'
+      });
+    }
+    scheduleReminder(); // reprogramar para mañana
+  }, delay);
+}
+
+// ---- EXPORTAR CSV ----
+function exportCSV() {
+  const txs  = lsGet('cf_transactions', []);
+  const cats = lsGet('cf_categories', []);
+  if (!txs.length) { toast('No hay transacciones para exportar', 'error'); return; }
+
+  const header = ['Fecha','Tipo','Categoría','Monto','Nota'];
+  const rows = txs.map(t => {
+    const cat = cats.find(c => c.id === t.category_id);
+    return [
+      t.date,
+      t.type === 'expense' ? 'Gasto' : 'Ingreso',
+      cat?.name ?? '-',
+      t.amount.toFixed(2),
+      (t.note || '').replace(/,/g, ';')
+    ].join(',');
+  });
+
+  const csv   = [header.join(','), ...rows].join('\n');
+  const blob  = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement('a');
+  a.href      = url;
+  a.download  = `finanzas_${State.currentMonth}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Descarga iniciada ✓', 'success');
+}
+
 // ---- PROFILE PAGE ----
 async function loadProfile() {
   if (!State.user) return;
@@ -820,6 +941,7 @@ async function saveTransaction() {
     });
     Categorizer.reinforce(amount, State.quickAddCategoryId);
     Streaks.update();
+    checkAchievements();
     toast(`Guardado: ${fmt(amount)}`, 'success');
     closeOverlay('overlay-quickadd');
     loadDashboard();
@@ -926,6 +1048,7 @@ async function init() {
         color: goalSelectedColor
       });
       toast('¡Meta creada!', 'success');
+      checkAchievements();
       closeOverlay('overlay-goal');
       loadGoals();
       e.target.reset();
@@ -1023,9 +1146,13 @@ async function init() {
     $('theme-toggle').classList.toggle('active', !isDark);
   });
 
+  // -- Notificaciones y exportar --
+  setupNotifications();
+  $('btn-export-csv').addEventListener('click', exportCSV);
+
   // -- Logout --
   $('btn-logout').addEventListener('click', () => {
-    if (confirm('¿Borrar todos los datos?')) {
+    if (confirm('¿Borrar TODOS los datos? Esta acción no se puede deshacer.')) {
       localStorage.clear();
       location.reload();
     }

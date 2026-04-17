@@ -345,11 +345,24 @@
               <span>🌙 Tema oscuro</span>
               <button id="theme-toggle" class="toggle active"></button>
             </div>
+            <div class="config-row">
+              <span>🔔 Recordatorio diario</span>
+              <button id="toggle-notif" class="toggle"></button>
+            </div>
+            <div class="config-row hidden" id="notif-time-row">
+              <span class="text-muted text-sm">Hora del recordatorio</span>
+              <input type="time" id="notif-time" value="20:00"
+                class="input" style="width:110px;padding:0.3rem 0.5rem;font-size:0.9rem;" />
+            </div>
+            <div class="config-row" style="cursor:pointer;" id="btn-export-csv">
+              <span>📤 Exportar mis datos</span>
+              <span class="text-muted text-sm">CSV →</span>
+            </div>
           </div>
         </div>
 
         <button id="btn-logout" class="btn btn-outline btn-full text-rose">
-          🚪 Cerrar sesión
+          🗑️ Borrar todos los datos
         </button>
       </div>
     </div>
