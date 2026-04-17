@@ -5,14 +5,14 @@
 const CACHE_NAME = 'finanzas-v3';
 
 const ASSETS = [
-  '/Track-Finanzas/',
-  '/Track-Finanzas/index.html',
-  '/Track-Finanzas/css/app.css',
-  '/Track-Finanzas/js/config.js',
-  '/Track-Finanzas/js/db.js',
-  '/Track-Finanzas/js/analytics.js',
-  '/Track-Finanzas/js/app.js',
-  '/Track-Finanzas/manifest.json',
+  '/App-Finanzas/',
+  '/App-Finanzas/index.html',
+  '/App-Finanzas/css/app.css',
+  '/App-Finanzas/js/config.js',
+  '/App-Finanzas/js/db.js',
+  '/App-Finanzas/js/analytics.js',
+  '/App-Finanzas/js/app.js',
+  '/App-Finanzas/manifest.json',
 ];
 
 self.addEventListener('install', event => {
@@ -47,7 +47,7 @@ self.addEventListener('fetch', event => {
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         }
         return response;
-      }).catch(() => caches.match('/Track-Finanzas/index.html'));
+      }).catch(() => caches.match('/App-Finanzas/index.html'));
     })
   );
 });
