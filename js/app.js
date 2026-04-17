@@ -12,6 +12,8 @@ const State = {
   quickAddAmount: '0',
   quickAddCategoryId: '',
   quickAddRecurring: false,
+  transferFromId: '',
+  transferToId: '',
   selectedGoalId: null,
   selectedGoalName: '',
   selectedDebtId: null,
@@ -104,6 +106,9 @@ async function loadDashboard() {
   const budgets = Budgets.getAll(State.currentMonth);
   const insights = generateInsights(txs, prevTxs, cats, budgets);
   renderInsights($('dashboard-insights'), insights.slice(0,3));
+
+  // Cuentas en dashboard
+  renderAccountsCard();
 
   // Presupuestos en dashboard
   const cardBudgetsDash = $('card-budgets-dash');
@@ -214,24 +219,7 @@ function renderTxList(container, txs, showDate = false) {
     container.innerHTML = '<p class="text-muted text-center py-4 text-sm">Sin movimientos</p>';
     return;
   }
-  container.innerHTML = txs.map(tx => {
-    const color = tx.category?.color ?? '#6B7280';
-    const recurring = tx.is_recurring ? '🔁 ' : '';
-    const meta = [showDate?fmtDate(tx.date):'', tx.note].filter(Boolean).join(' · ');
-    return `
-      <div class="tx-item" data-id="${tx.id}">
-        <div class="tx-icon" style="background:${color}20">${tx.category?.icon??'💸'}</div>
-        <div class="tx-info">
-          <p class="tx-name">${recurring}${tx.category?.name??'Sin categoría'}</p>
-          ${meta?`<p class="tx-meta">${meta}</p>`:''}
-        </div>
-        <span class="tx-amount ${tx.type}">${tx.type==='expense'?'-':tx.type==='income'?'+':''}${fmt(tx.amount)}</span>
-      </div>
-      <div class="tx-actions hidden">
-        <button class="btn btn-sm" style="flex:1;background:var(--bg-secondary);" onclick="openEditTx('${tx.id}')">✏️ Editar</button>
-        <button class="btn btn-danger btn-sm" style="flex:1;" onclick="deleteTx('${tx.id}')">🗑 Eliminar</button>
-      </div>`;
-  }).join('');
+  container.innerHTML = txs.map(tx => txItemHTML(tx, showDate)).join('');
 
   container.querySelectorAll('.tx-item').forEach(item => {
     item.addEventListener('click', e => {
@@ -244,6 +232,44 @@ function renderTxList(container, txs, showDate = false) {
       panel.classList.toggle('hidden');
     });
   });
+}
+
+// ---- TX ITEM HTML (reutilizable) ----
+function txItemHTML(tx, showDate = false) {
+  if (tx.type === 'transfer') {
+    const accounts = Accounts.getAll();
+    const from = accounts.find(a => a.id === tx.from_account);
+    const to   = accounts.find(a => a.id === tx.to_account);
+    const meta = [showDate ? fmtDate(tx.date) : '', tx.note].filter(Boolean).join(' · ');
+    return `
+      <div class="tx-item" data-id="${tx.id}">
+        <div class="tx-icon" style="background:var(--violet-dim)">↔️</div>
+        <div class="tx-info">
+          <p class="tx-name">${from?.icon ?? ''}${from?.name ?? '?'} → ${to?.icon ?? ''}${to?.name ?? '?'}</p>
+          ${meta ? `<p class="tx-meta">${meta}</p>` : ''}
+        </div>
+        <span class="tx-amount transfer">${fmt(tx.amount)}</span>
+      </div>
+      <div class="tx-actions hidden">
+        <button class="btn btn-danger btn-sm" style="flex:1;" onclick="deleteTx('${tx.id}')">🗑 Eliminar</button>
+      </div>`;
+  }
+  const color     = tx.category?.color ?? '#6B7280';
+  const recurring = tx.is_recurring ? '🔁 ' : '';
+  const meta      = [showDate ? fmtDate(tx.date) : '', tx.note].filter(Boolean).join(' · ');
+  return `
+    <div class="tx-item" data-id="${tx.id}">
+      <div class="tx-icon" style="background:${color}20">${tx.category?.icon ?? '💸'}</div>
+      <div class="tx-info">
+        <p class="tx-name">${recurring}${tx.category?.name ?? 'Sin categoría'}</p>
+        ${meta ? `<p class="tx-meta">${meta}</p>` : ''}
+      </div>
+      <span class="tx-amount ${tx.type}">${tx.type === 'expense' ? '-' : tx.type === 'income' ? '+' : ''}${fmt(tx.amount)}</span>
+    </div>
+    <div class="tx-actions hidden">
+      <button class="btn btn-sm" style="flex:1;background:var(--bg-secondary);" onclick="openEditTx('${tx.id}')">✏️ Editar</button>
+      <button class="btn btn-danger btn-sm" style="flex:1;" onclick="deleteTx('${tx.id}')">🗑 Eliminar</button>
+    </div>`;
 }
 
 // ---- EDITAR TRANSACCIÓN ----
@@ -387,23 +413,7 @@ function renderTransactionsPage(txs) {
       </div>
       <div class="card" style="margin-bottom:0.5rem">
         <div class="card-body" style="padding:0 1rem">
-          ${items.map(tx => {
-            const color = tx.category?.color??'#6B7280';
-            const recurring = tx.is_recurring ? '🔁 ' : '';
-            return `
-              <div class="tx-item" data-id="${tx.id}">
-                <div class="tx-icon" style="background:${color}20">${tx.category?.icon??'💸'}</div>
-                <div class="tx-info">
-                  <p class="tx-name">${recurring}${tx.category?.name??'Sin categoría'}</p>
-                  ${tx.note?`<p class="tx-meta">${tx.note}</p>`:''}
-                </div>
-                <span class="tx-amount ${tx.type}">${tx.type==='expense'?'-':'+'}${fmt(tx.amount)}</span>
-              </div>
-              <div class="tx-actions hidden" data-txid="${tx.id}">
-                <button class="btn btn-sm" style="flex:1;background:var(--bg-secondary);" onclick="openEditTx('${tx.id}')">✏️ Editar</button>
-                <button class="btn btn-danger btn-sm" style="flex:1;" onclick="deleteTx('${tx.id}')">🗑 Eliminar</button>
-              </div>`;
-          }).join('')}
+          ${items.map(tx => txItemHTML(tx, false)).join('')}
         </div>
       </div>`;
   }).join('');
@@ -926,6 +936,85 @@ function exportCSV() {
   toast('Descarga iniciada ✓', 'success');
 }
 
+// ---- ACCOUNTS ----
+function renderAccountsCard() {
+  const accounts = Accounts.getAll();
+  const container = $('dash-accounts-list');
+  container.innerHTML = accounts.map(acc => {
+    const bal = Accounts.getBalance(acc.id);
+    return `
+      <div style="flex-shrink:0;background:${acc.color}18;border:1px solid ${acc.color}40;border-radius:14px;padding:0.75rem 1rem;min-width:110px;text-align:center;">
+        <div style="font-size:1.5rem;">${acc.icon}</div>
+        <p style="font-size:0.75rem;font-weight:600;margin:4px 0 2px;">${acc.name}</p>
+        <p style="font-size:0.85rem;font-family:monospace;color:${acc.color};font-weight:700;">${fmt(bal)}</p>
+      </div>`;
+  }).join('');
+}
+
+function openAccountsModal() {
+  renderAccountsList();
+  // Color picker
+  const picker = $('acc-color-picker');
+  let selColor = '#10B981';
+  picker.innerHTML = ['#10B981','#3B82F6','#8B5CF6','#F59E0B','#EC4899','#06B6D4','#EF4444','#F97316'].map(c => `
+    <button type="button" class="cat-color-opt" data-color="${c}"
+      style="width:26px;height:26px;border-radius:50%;background:${c};border:2px solid ${c === selColor ? 'white' : 'transparent'};"></button>`
+  ).join('');
+  picker.querySelectorAll('.cat-color-opt').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selColor = btn.dataset.color;
+      picker.querySelectorAll('.cat-color-opt').forEach(b =>
+        b.style.borderColor = b.dataset.color === selColor ? 'white' : 'transparent'
+      );
+    });
+  });
+  $('form-account').onsubmit = e => {
+    e.preventDefault();
+    const name = $('acc-name').value.trim();
+    if (!name) return;
+    Accounts.add({
+      name,
+      icon:            $('acc-icon').value.trim() || '💼',
+      color:           selColor,
+      initial_balance: parseFloat($('acc-balance').value) || 0
+    });
+    $('form-account').reset();
+    renderAccountsList();
+    renderAccountsCard();
+    toast('Cuenta agregada ✓', 'success');
+  };
+  openOverlay('overlay-accounts');
+}
+
+function renderAccountsList() {
+  const accs = Accounts.getAll();
+  const defaultIds = ['acc-01', 'acc-02', 'acc-03'];
+  $('accounts-list').innerHTML = accs.map(acc => {
+    const bal = Accounts.getBalance(acc.id);
+    return `
+      <div style="display:flex;align-items:center;gap:0.75rem;padding:0.3rem 0;">
+        <span style="font-size:1.25rem;">${acc.icon}</span>
+        <div style="flex:1;">
+          <p style="font-size:0.9rem;font-weight:600;">${acc.name}</p>
+          <p style="font-size:0.75rem;color:${acc.color};font-family:monospace;">${fmt(bal)}</p>
+        </div>
+        ${!defaultIds.includes(acc.id)
+          ? `<button class="btn-icon text-rose btn-del-acc" data-id="${acc.id}" style="font-size:0.85rem;background:none;">✕</button>`
+          : ''}
+      </div>`;
+  }).join('');
+  $('accounts-list').querySelectorAll('.btn-del-acc').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (confirm('¿Eliminar esta cuenta?')) {
+        Accounts.remove(btn.dataset.id);
+        renderAccountsList();
+        renderAccountsCard();
+        toast('Cuenta eliminada', '');
+      }
+    });
+  });
+}
+
 // ---- DASH BUDGETS ----
 function renderDashBudgets(txs, cats, budgets) {
   const container = $('dash-budgets-list');
@@ -1350,6 +1439,8 @@ function openQuickAdd(type = 'expense') {
   State.quickAddAmount = '0';
   State.quickAddCategoryId = '';
   State.quickAddRecurring = false;
+  State.transferFromId = '';
+  State.transferToId = '';
   $('amount-value').textContent = '0';
   $('quickadd-note').classList.add('hidden');
   $('btn-add-note').classList.remove('hidden');
@@ -1364,10 +1455,22 @@ function openQuickAdd(type = 'expense') {
 }
 
 async function loadQuickAddCategories(type) {
+  const isTransfer = type === 'transfer';
+
+  // Mostrar panel correcto
+  $('quickadd-categories').classList.toggle('hidden', isTransfer);
+  $('transfer-panel').classList.toggle('hidden', !isTransfer);
+  // Ocultar recurrente en transferencias
+  $('btn-toggle-recurring').parentElement.style.display = isTransfer ? 'none' : '';
+
+  if (isTransfer) {
+    loadTransferAccountPickers();
+    return;
+  }
+
   const cats = await Categories.getAll(type === 'income' ? 'income' : 'expense');
   State.categories = cats;
 
-  // Auto-predict
   const predicted = Categorizer.predict(parseFloat(State.quickAddAmount)||0);
   const defaultId = predicted || (cats[0]?.id ?? '');
   State.quickAddCategoryId = defaultId;
@@ -1392,6 +1495,33 @@ async function loadQuickAddCategories(type) {
   });
 }
 
+function loadTransferAccountPickers() {
+  const accounts = Accounts.getAll();
+  State.transferFromId = accounts[0]?.id ?? '';
+  State.transferToId   = accounts[1]?.id ?? '';
+
+  function renderList(containerId, selectedId, onSelect) {
+    const el = $(containerId);
+    el.innerHTML = accounts.map(acc => {
+      const sel = acc.id === selectedId;
+      return `<button type="button" class="cat-btn ${sel?'selected':''}" data-accid="${acc.id}"
+        style="${sel?`background:${acc.color}20;outline-color:${acc.color}`:''}">
+        <span class="cat-btn-icon">${acc.icon}</span>
+        <span class="cat-btn-name">${acc.name}</span>
+      </button>`;
+    }).join('');
+    el.querySelectorAll('.cat-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        onSelect(btn.dataset.accid);
+        renderList(containerId, btn.dataset.accid, onSelect);
+      });
+    });
+  }
+
+  renderList('transfer-from-list', State.transferFromId, id => { State.transferFromId = id; });
+  renderList('transfer-to-list',   State.transferToId,   id => { State.transferToId   = id; });
+}
+
 function handleNumpad(key) {
   if (typeof navigator.vibrate === 'function') navigator.vibrate(8);
   let v = State.quickAddAmount;
@@ -1409,26 +1539,51 @@ function handleNumpad(key) {
 
 async function saveTransaction() {
   const amount = parseFloat(State.quickAddAmount);
-  if (amount <= 0 || !State.quickAddCategoryId) {
-    toast('Ingresa un monto y selecciona una categoría', 'error'); return;
+  if (amount <= 0) { toast('Ingresa un monto válido', 'error'); return; }
+
+  const isTransfer = State.quickAddType === 'transfer';
+
+  if (isTransfer) {
+    if (!State.transferFromId || !State.transferToId) {
+      toast('Selecciona las cuentas de origen y destino', 'error'); return;
+    }
+    if (State.transferFromId === State.transferToId) {
+      toast('Las cuentas de origen y destino deben ser distintas', 'error'); return;
+    }
+  } else {
+    if (!State.quickAddCategoryId) {
+      toast('Selecciona una categoría', 'error'); return;
+    }
   }
+
   const btn = $('btn-save-transaction');
   btn.disabled = true; btn.textContent = 'Guardando...';
 
   try {
-    await Transactions.add({
-      user_id: State.user.id,
-      type: State.quickAddType,
+    const txData = {
+      user_id:      State.user.id,
+      type:         State.quickAddType,
       amount,
-      category_id: State.quickAddCategoryId,
-      date: $('quickadd-date').value || today(),
-      note: $('quickadd-note').value || null,
-      is_recurring: State.quickAddRecurring
-    });
-    Categorizer.reinforce(amount, State.quickAddCategoryId);
+      date:         $('quickadd-date').value || today(),
+      note:         $('quickadd-note').value || null,
+      is_recurring: isTransfer ? false : State.quickAddRecurring,
+      category_id:  isTransfer ? null : State.quickAddCategoryId,
+      from_account: isTransfer ? State.transferFromId  : null,
+      to_account:   isTransfer ? State.transferToId    : null,
+    };
+    await Transactions.add(txData);
+
+    if (!isTransfer) Categorizer.reinforce(amount, State.quickAddCategoryId);
     Streaks.update();
     checkAchievements();
-    toast(`Guardado: ${fmt(amount)}`, 'success');
+
+    const accounts = Accounts.getAll();
+    const fromName = accounts.find(a => a.id === State.transferFromId)?.name ?? '';
+    const toName   = accounts.find(a => a.id === State.transferToId)?.name ?? '';
+    toast(isTransfer
+      ? `Transferencia: ${fromName} → ${toName} ${fmt(amount)}`
+      : `Guardado: ${fmt(amount)}`, 'success');
+
     closeOverlay('overlay-quickadd');
     loadDashboard();
   } catch(e) {
@@ -1539,6 +1694,10 @@ async function init() {
 
       case 'btn-new-category':
         openCategoryModal();
+        break;
+
+      case 'btn-manage-accounts':
+        openAccountsModal();
         break;
 
       case 'btn-export-csv':

@@ -154,6 +154,50 @@ const Debts = {
   remove(id) { lsSet('cf_debts', lsGet('cf_debts', []).filter(d => d.id !== id)); }
 };
 
+// ---- ACCOUNTS (billeteras) ----
+const DEFAULT_ACCOUNTS = [
+  { id: 'acc-01', name: 'Efectivo',  icon: '💵', color: '#10B981', initial_balance: 0 },
+  { id: 'acc-02', name: 'Banco',     icon: '🏦', color: '#3B82F6', initial_balance: 0 },
+  { id: 'acc-03', name: 'Digital',   icon: '📱', color: '#8B5CF6', initial_balance: 0 },
+];
+
+const Accounts = {
+  getAll() {
+    if (!lsGet('cf_accs_init', false)) {
+      lsSet('cf_accounts', DEFAULT_ACCOUNTS);
+      lsSet('cf_accs_init', true);
+    }
+    return lsGet('cf_accounts', DEFAULT_ACCOUNTS);
+  },
+  add(acc) {
+    const all = this.getAll();
+    const a = { ...acc, id: uid() };
+    all.push(a);
+    lsSet('cf_accounts', all);
+    return a;
+  },
+  update(id, changes) {
+    const all = this.getAll();
+    const i = all.findIndex(a => a.id === id);
+    if (i >= 0) { all[i] = { ...all[i], ...changes }; lsSet('cf_accounts', all); }
+  },
+  remove(id) {
+    lsSet('cf_accounts', lsGet('cf_accounts', []).filter(a => a.id !== id));
+  },
+  // Saldo = saldo_inicial + transferencias recibidas - transferencias enviadas
+  getBalance(id) {
+    const acc = this.getAll().find(a => a.id === id);
+    const initial = acc?.initial_balance || 0;
+    const txs = lsGet('cf_transactions', []);
+    return txs.reduce((bal, t) => {
+      if (t.type !== 'transfer') return bal;
+      if (t.to_account   === id) return bal + t.amount;
+      if (t.from_account === id) return bal - t.amount;
+      return bal;
+    }, initial);
+  }
+};
+
 // ---- STREAKS ----
 const Streaks = {
   get() {

@@ -107,6 +107,15 @@
           </div>
         </div>
 
+        <!-- Cuentas / billeteras -->
+        <div class="card" id="card-accounts">
+          <div class="card-header">
+            <h3 class="card-title">💳 Mis cuentas</h3>
+            <button id="btn-manage-accounts" class="btn btn-sm btn-ghost">Gestionar</button>
+          </div>
+          <div class="card-body" id="dash-accounts-list" style="display:flex;gap:0.75rem;overflow-x:auto;padding-bottom:0.25rem;"></div>
+        </div>
+
         <!-- Resumen de presupuestos -->
         <div class="card" id="card-budgets-dash" style="display:none;">
           <div class="card-header">
@@ -517,8 +526,21 @@
       <span id="amount-value" class="amount-number">0</span>
     </div>
 
-    <!-- Categorías -->
+    <!-- Categorías (gasto/ingreso) -->
     <div class="categories-scroll" id="quickadd-categories"></div>
+
+    <!-- Selector de cuentas (solo transferencia) -->
+    <div id="transfer-panel" class="hidden" style="padding:0 1rem;display:flex;flex-direction:column;gap:0.75rem;">
+      <div>
+        <p style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:0.4rem;">Desde</p>
+        <div id="transfer-from-list" style="display:flex;gap:0.5rem;flex-wrap:wrap;"></div>
+      </div>
+      <div style="text-align:center;font-size:1.4rem;line-height:1;">↓</div>
+      <div>
+        <p style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:0.4rem;">Hacia</p>
+        <div id="transfer-to-list" style="display:flex;gap:0.5rem;flex-wrap:wrap;"></div>
+      </div>
+    </div>
 
     <!-- Nota y recurrente -->
     <div class="note-section">
@@ -715,6 +737,33 @@
       </div>
       <button type="submit" class="btn btn-primary btn-full">Registrar deuda</button>
     </form>
+  </div>
+</div>
+
+<!-- Modal: Gestionar cuentas -->
+<div id="overlay-accounts" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">💳 Mis cuentas</h2>
+      <button class="btn-icon close-modal" data-modal="accounts">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:0.75rem;">
+      <div id="accounts-list" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
+      <hr style="border-color:var(--border);" />
+      <p style="font-size:0.8rem;font-weight:700;color:var(--text-muted);">NUEVA CUENTA</p>
+      <form id="form-account" style="display:flex;flex-direction:column;gap:0.6rem;">
+        <div style="display:flex;gap:0.5rem;">
+          <input id="acc-icon" class="input" style="width:56px;font-size:1.4rem;text-align:center;" placeholder="💵" maxlength="2" />
+          <input id="acc-name" class="input" style="flex:1;" placeholder="Nombre (ej: Yape)" required maxlength="20" />
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+          <label style="font-size:0.85rem;color:var(--text-muted);white-space:nowrap;">Saldo inicial (S/)</label>
+          <input id="acc-balance" type="number" class="input" style="flex:1;" placeholder="0" min="0" step="0.01" value="0" />
+        </div>
+        <div id="acc-color-picker" style="display:flex;gap:0.5rem;flex-wrap:wrap;"></div>
+        <button type="submit" class="btn btn-primary btn-full">Agregar cuenta</button>
+      </form>
+    </div>
   </div>
 </div>
 
