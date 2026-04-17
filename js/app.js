@@ -19,6 +19,7 @@ const State = {
   simCategoryId: '',
   charts: {},
   txFilterType: 'all',
+  txCatFilter: '',
   txSearch: '',
 };
 
@@ -102,6 +103,18 @@ async function loadDashboard() {
   const budgets = Budgets.getAll(State.currentMonth);
   const insights = generateInsights(txs, prevTxs, cats, budgets);
   renderInsights($('dashboard-insights'), insights.slice(0,3));
+
+  // Gastos fijos del mes
+  const recurring = txs.filter(t => t.is_recurring && t.type === 'expense');
+  const cardRec = $('card-recurring');
+  if (recurring.length) {
+    cardRec.style.display = '';
+    const total = recurring.reduce((s,t) => s+t.amount, 0);
+    $('recurring-total').textContent = fmt(total) + '/mes';
+    renderTxList($('recurring-list'), recurring, false);
+  } else {
+    cardRec.style.display = 'none';
+  }
 
   // Últimas transacciones
   const recent = await Transactions.getRecent(5);
@@ -204,8 +217,9 @@ function renderTxList(container, txs, showDate = false) {
         </div>
         <span class="tx-amount ${tx.type}">${tx.type==='expense'?'-':tx.type==='income'?'+':''}${fmt(tx.amount)}</span>
       </div>
-      <div class="tx-actions hidden" id="actions-${tx.id}">
-        <button class="btn btn-danger btn-sm" onclick="deleteTx('${tx.id}')">🗑 Eliminar</button>
+      <div class="tx-actions hidden" id="actions-${tx.id}" style="display:flex;gap:0.5rem;padding:0.4rem 0.75rem;">
+        <button class="btn btn-sm" style="flex:1;background:var(--bg-secondary);" onclick="openEditTx('${tx.id}')">✏️ Editar</button>
+        <button class="btn btn-danger btn-sm" style="flex:1;" onclick="deleteTx('${tx.id}')">🗑 Eliminar</button>
       </div>`;
   }).join('');
 
@@ -215,6 +229,58 @@ function renderTxList(container, txs, showDate = false) {
       if (actions) actions.classList.toggle('hidden');
     });
   });
+}
+
+// ---- EDITAR TRANSACCIÓN ----
+let _editTxId = null;
+let _editTxRecurring = false;
+
+function openEditTx(id) {
+  const all = lsGet('cf_transactions', []);
+  const tx  = all.find(t => t.id === id);
+  if (!tx) return;
+  _editTxId = id;
+  _editTxRecurring = tx.is_recurring || false;
+
+  // Tipo
+  document.querySelectorAll('[data-edit-type]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.editType === tx.type);
+  });
+
+  // Campos
+  $('edit-tx-amount').value   = tx.amount;
+  $('edit-tx-date').value     = tx.date;
+  $('edit-tx-note').value     = tx.note || '';
+
+  // Toggle recurrente
+  const recBtn = $('edit-tx-recurring');
+  recBtn.classList.toggle('active', _editTxRecurring);
+
+  // Categorías
+  const cats = Categories.getAll();
+  $('edit-tx-category').innerHTML = `<option value="">Sin categoría</option>` +
+    cats.map(c => `<option value="${c.id}" ${c.id===tx.category_id?'selected':''}>${c.icon} ${c.name}</option>`).join('');
+
+  openOverlay('overlay-edit-tx');
+}
+
+async function saveEditTx() {
+  if (!_editTxId) return;
+  const amount = parseFloat($('edit-tx-amount').value);
+  if (!amount || amount <= 0) { toast('Monto inválido', 'error'); return; }
+  const type = document.querySelector('[data-edit-type].active')?.dataset.editType || 'expense';
+  Transactions.update(_editTxId, {
+    amount,
+    type,
+    category_id: $('edit-tx-category').value || null,
+    date:        $('edit-tx-date').value,
+    note:        $('edit-tx-note').value || null,
+    is_recurring: _editTxRecurring
+  });
+  toast('Movimiento actualizado ✓', 'success');
+  closeOverlay('overlay-edit-tx');
+  loadDashboard();
+  if ($('page-transactions').classList.contains('active')) loadTransactions();
 }
 
 async function deleteTx(id) {
@@ -251,8 +317,27 @@ async function loadTransactions() {
 }
 
 function renderTransactionsPage(txs) {
+  // Filtros de categoría
+  const cats = Categories.getAll();
+  const catFilter = $('tx-cat-filters');
+  if (catFilter && !catFilter.dataset.built) {
+    catFilter.dataset.built = '1';
+    catFilter.innerHTML = `<button class="filter-btn active" data-catid="">Todas</button>` +
+      cats.map(c => `<button class="filter-btn" data-catid="${c.id}">${c.icon} ${c.name}</button>`).join('');
+    catFilter.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        catFilter.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        State.txCatFilter = btn.dataset.catid;
+        renderTransactionsPage(State.transactions);
+      });
+    });
+  }
+
   const filtered = txs.filter(t => {
+    if (State.txFilterType === 'recurring') return t.is_recurring;
     if (State.txFilterType !== 'all' && t.type !== State.txFilterType) return false;
+    if (State.txCatFilter && t.category_id !== State.txCatFilter) return false;
     const q = State.txSearch.toLowerCase();
     if (q) return (t.category?.name??'').toLowerCase().includes(q) ||
       (t.note??'').toLowerCase().includes(q) ||
@@ -298,8 +383,9 @@ function renderTransactionsPage(txs) {
                 </div>
                 <span class="tx-amount ${tx.type}">${tx.type==='expense'?'-':'+'}${fmt(tx.amount)}</span>
               </div>
-              <div class="tx-actions hidden" id="actions-${tx.id}">
-                <button class="btn btn-danger btn-sm" onclick="deleteTx('${tx.id}')">🗑 Eliminar</button>
+              <div class="tx-actions hidden" id="actions-${tx.id}" style="display:flex;gap:0.5rem;padding:0.4rem 0.75rem;">
+                <button class="btn btn-sm" style="flex:1;background:var(--bg-secondary);" onclick="openEditTx('${tx.id}')">✏️ Editar</button>
+                <button class="btn btn-danger btn-sm" style="flex:1;" onclick="deleteTx('${tx.id}')">🗑 Eliminar</button>
               </div>`;
           }).join('')}
         </div>
@@ -1132,6 +1218,21 @@ async function init() {
       case 'btn-export-csv':
         exportCSV();
         break;
+
+      case 'btn-save-edit-tx':
+        saveEditTx();
+        break;
+
+      case 'edit-tx-recurring':
+        _editTxRecurring = !_editTxRecurring;
+        $('edit-tx-recurring').classList.toggle('active', _editTxRecurring);
+        break;
+    }
+
+    // Tipo en modal edición
+    if (t.dataset.editType) {
+      document.querySelectorAll('[data-edit-type]').forEach(b => b.classList.remove('active'));
+      t.classList.add('active');
     }
   });
 

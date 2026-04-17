@@ -106,6 +106,17 @@
           </div>
         </div>
 
+        <!-- Gastos fijos del mes -->
+        <div class="card" id="card-recurring" style="display:none;">
+          <div class="card-header">
+            <h3 class="card-title">🔁 Gastos fijos</h3>
+            <span id="recurring-total" class="text-rose font-bold text-sm"></span>
+          </div>
+          <div class="card-body">
+            <div id="recurring-list" class="tx-list"></div>
+          </div>
+        </div>
+
         <!-- Últimas transacciones -->
         <div class="card">
           <div class="card-header">
@@ -153,7 +164,11 @@
           <button class="filter-btn active" data-filter="all">Todos</button>
           <button class="filter-btn" data-filter="expense">Gastos</button>
           <button class="filter-btn" data-filter="income">Ingresos</button>
+          <button class="filter-btn" data-filter="recurring">🔁 Fijos</button>
         </div>
+
+        <!-- Filtros categoría -->
+        <div class="filter-row" id="tx-cat-filters" style="flex-wrap:wrap;gap:0.4rem;"></div>
 
         <!-- Lista -->
         <div id="transactions-list" class="tx-list"></div>
@@ -474,6 +489,33 @@
      MODAL: NUEVA META
 ============================================= -->
 <!-- Modal: Nueva categoría -->
+<!-- Modal: Editar transacción -->
+<div id="overlay-edit-tx" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Editar movimiento</h2>
+      <button class="btn-icon close-modal" data-modal="edit-tx">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:0.75rem;">
+      <div class="type-pills" style="justify-content:center;">
+        <button class="type-pill active" data-edit-type="expense">Gasto</button>
+        <button class="type-pill" data-edit-type="income">Ingreso</button>
+      </div>
+      <input type="number" id="edit-tx-amount" class="input" placeholder="Monto" min="0.01" step="0.01" required />
+      <select id="edit-tx-category" class="input"></select>
+      <input type="date" id="edit-tx-date" class="input" />
+      <input type="text" id="edit-tx-note" class="input" placeholder="Nota (opcional)" maxlength="100" />
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <label style="font-size:0.9rem;color:var(--text-muted);">🔁 Gasto fijo</label>
+        <button type="button" id="edit-tx-recurring" class="toggle"></button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button id="btn-save-edit-tx" class="btn btn-primary btn-full">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <div id="overlay-category" class="overlay hidden">
   <div class="modal">
     <div class="modal-header">

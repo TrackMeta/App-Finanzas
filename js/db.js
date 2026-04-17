@@ -86,6 +86,15 @@ const Transactions = {
     return this._enrich(newTx);
   },
 
+  update(id, changes) {
+    const all = lsGet('cf_transactions', []);
+    const idx = all.findIndex(t => t.id === id);
+    if (idx < 0) return;
+    all[idx] = { ...all[idx], ...changes };
+    lsSet('cf_transactions', all);
+    return this._enrich(all[idx]);
+  },
+
   remove(id) {
     lsSet('cf_transactions', lsGet('cf_transactions', []).filter(t => t.id !== id));
   }
