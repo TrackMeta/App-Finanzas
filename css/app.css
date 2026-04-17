@@ -385,7 +385,7 @@ html, body {
 .tx-amount.income { color: var(--emerald); }
 .tx-amount.transfer { color: var(--violet); }
 
-.tx-actions { display: flex; gap: 0.5rem; padding: 0.5rem 0 0.5rem 52px; }
+.tx-actions { display: flex; gap: 0.5rem; padding: 0.4rem 0.75rem; }
 .tx-actions.hidden { display: none; }
 
 .tx-group-header {

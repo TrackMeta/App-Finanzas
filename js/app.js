@@ -217,16 +217,21 @@ function renderTxList(container, txs, showDate = false) {
         </div>
         <span class="tx-amount ${tx.type}">${tx.type==='expense'?'-':tx.type==='income'?'+':''}${fmt(tx.amount)}</span>
       </div>
-      <div class="tx-actions hidden" id="actions-${tx.id}" style="display:flex;gap:0.5rem;padding:0.4rem 0.75rem;">
+      <div class="tx-actions hidden">
         <button class="btn btn-sm" style="flex:1;background:var(--bg-secondary);" onclick="openEditTx('${tx.id}')">✏️ Editar</button>
         <button class="btn btn-danger btn-sm" style="flex:1;" onclick="deleteTx('${tx.id}')">🗑 Eliminar</button>
       </div>`;
   }).join('');
 
   container.querySelectorAll('.tx-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const actions = $('actions-' + item.dataset.id);
-      if (actions) actions.classList.toggle('hidden');
+    item.addEventListener('click', e => {
+      const panel = item.nextElementSibling;
+      if (!panel || !panel.classList.contains('tx-actions')) return;
+      // Cerrar otros paneles abiertos en el mismo contenedor
+      container.querySelectorAll('.tx-actions').forEach(a => {
+        if (a !== panel) a.classList.add('hidden');
+      });
+      panel.classList.toggle('hidden');
     });
   });
 }
@@ -374,16 +379,17 @@ function renderTransactionsPage(txs) {
         <div class="card-body" style="padding:0 1rem">
           ${items.map(tx => {
             const color = tx.category?.color??'#6B7280';
+            const recurring = tx.is_recurring ? '🔁 ' : '';
             return `
               <div class="tx-item" data-id="${tx.id}">
                 <div class="tx-icon" style="background:${color}20">${tx.category?.icon??'💸'}</div>
                 <div class="tx-info">
-                  <p class="tx-name">${tx.category?.name??'Sin categoría'}</p>
+                  <p class="tx-name">${recurring}${tx.category?.name??'Sin categoría'}</p>
                   ${tx.note?`<p class="tx-meta">${tx.note}</p>`:''}
                 </div>
                 <span class="tx-amount ${tx.type}">${tx.type==='expense'?'-':'+'}${fmt(tx.amount)}</span>
               </div>
-              <div class="tx-actions hidden" id="actions-${tx.id}" style="display:flex;gap:0.5rem;padding:0.4rem 0.75rem;">
+              <div class="tx-actions hidden" data-txid="${tx.id}">
                 <button class="btn btn-sm" style="flex:1;background:var(--bg-secondary);" onclick="openEditTx('${tx.id}')">✏️ Editar</button>
                 <button class="btn btn-danger btn-sm" style="flex:1;" onclick="deleteTx('${tx.id}')">🗑 Eliminar</button>
               </div>`;
@@ -393,9 +399,14 @@ function renderTransactionsPage(txs) {
   }).join('');
 
   container.querySelectorAll('.tx-item').forEach(item => {
-    item.addEventListener('click', () => {
-      const actions = $('actions-' + item.dataset.id);
-      if (actions) actions.classList.toggle('hidden');
+    item.addEventListener('click', e => {
+      const panel = item.nextElementSibling;
+      if (!panel || !panel.classList.contains('tx-actions')) return;
+      // Cerrar otros paneles abiertos en la misma lista
+      container.querySelectorAll('.tx-actions').forEach(a => {
+        if (a !== panel) a.classList.add('hidden');
+      });
+      panel.classList.toggle('hidden');
     });
   });
 }
