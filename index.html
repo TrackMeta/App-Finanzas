@@ -29,6 +29,90 @@
 </div>
 
 <!-- =============================================
+     ONBOARDING (primera vez)
+============================================= -->
+<div id="screen-onboarding" class="hidden">
+  <!-- Dots de progreso -->
+  <div class="ob-dots">
+    <div class="ob-dot active" id="ob-dot-0"></div>
+    <div class="ob-dot"        id="ob-dot-1"></div>
+    <div class="ob-dot"        id="ob-dot-2"></div>
+  </div>
+
+  <div class="ob-steps" id="ob-steps-container">
+
+    <!-- PASO 1: Bienvenida + nombre -->
+    <div class="ob-step" id="ob-step-0">
+      <div style="text-align:center;">
+        <div class="ob-logo">💰</div>
+        <h1 class="ob-title">Coach Finanzas</h1>
+        <p class="ob-subtitle">Tu entrenador financiero personal.<br>Registra gastos, cumple metas y toma el control.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0.75rem;">
+        <label style="font-size:0.85rem;color:var(--text-muted);">¿Cómo quieres que te llame?</label>
+        <input id="ob-name" type="text" class="input" placeholder="Tu nombre" maxlength="30"
+          style="font-size:1.1rem;padding:0.75rem 1rem;" autofocus />
+        <button id="ob-next-0" class="btn btn-primary btn-full btn-xl" style="margin-top:0.5rem;">
+          Continuar →
+        </button>
+      </div>
+    </div>
+
+    <!-- PASO 2: Saldos iniciales de cuentas -->
+    <div class="ob-step out-right" id="ob-step-1">
+      <h2 class="ob-title" style="font-size:1.3rem;">¿Cuánto tienes ahora?</h2>
+      <p class="ob-subtitle" style="margin-bottom:1.25rem;">Ingresa tu saldo actual en cada cuenta.<br><small>Podés dejarlo en 0 y cambiarlo después.</small></p>
+      <div id="ob-accounts-inputs" style="display:flex;flex-direction:column;gap:0;margin-bottom:1.5rem;"></div>
+      <button id="ob-next-1" class="btn btn-primary btn-full btn-xl">Continuar →</button>
+      <button id="ob-skip-1" class="btn btn-ghost btn-full" style="margin-top:0.5rem;font-size:0.85rem;">
+        Saltar por ahora
+      </button>
+    </div>
+
+    <!-- PASO 3: Todo listo -->
+    <div class="ob-step out-right" id="ob-step-2">
+      <div style="text-align:center;margin-bottom:1.5rem;">
+        <div class="ob-logo" style="animation-delay:0.1s;">🎉</div>
+        <h2 class="ob-title" id="ob-ready-title">¡Estás listo!</h2>
+        <p class="ob-subtitle">Esto es lo que podés hacer:</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0;margin-bottom:2rem;">
+        <div class="ob-feature">
+          <span class="ob-feature-icon">⚡</span>
+          <div class="ob-feature-text">
+            <p>Registro ultrarrápido</p>
+            <small>Registra un gasto en menos de 5 segundos</small>
+          </div>
+        </div>
+        <div class="ob-feature">
+          <span class="ob-feature-icon">📊</span>
+          <div class="ob-feature-text">
+            <p>Análisis automático</p>
+            <small>Insights, score financiero y proyecciones</small>
+          </div>
+        </div>
+        <div class="ob-feature">
+          <span class="ob-feature-icon">🎯</span>
+          <div class="ob-feature-text">
+            <p>Metas de ahorro</p>
+            <small>Seguimiento visual de tus objetivos</small>
+          </div>
+        </div>
+        <div class="ob-feature">
+          <span class="ob-feature-icon">💳</span>
+          <div class="ob-feature-text">
+            <p>Transferencias entre cuentas</p>
+            <small>Efectivo, banco, billetera digital</small>
+          </div>
+        </div>
+      </div>
+      <button id="ob-finish" class="btn btn-primary btn-full btn-xl">¡Empezar! 🚀</button>
+    </div>
+
+  </div><!-- /ob-steps-container -->
+</div>
+
+<!-- =============================================
      APP SHELL (autenticado)
 ============================================= -->
 <div id="screen-app" class="screen hidden">

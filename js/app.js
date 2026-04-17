@@ -70,6 +70,81 @@ function showApp() {
 }
 function showLogin() { /* sin login */ }
 
+// ---- ONBOARDING ----
+function showOnboarding() {
+  const screen = $('screen-onboarding');
+  screen.classList.remove('hidden');
+
+  // Renderizar inputs de saldos de cuentas
+  const accounts = Accounts.getAll();
+  $('ob-accounts-inputs').innerHTML = accounts.map(acc => `
+    <div class="ob-account-row">
+      <div class="ob-account-icon" style="background:${acc.color}20;">${acc.icon}</div>
+      <div style="flex:1;">
+        <p style="font-size:0.9rem;font-weight:600;">${acc.name}</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.4rem;">
+        <span style="font-size:0.85rem;color:var(--text-muted);">S/</span>
+        <input type="number" class="input ob-acc-input" data-accid="${acc.id}"
+          value="0" min="0" step="0.01"
+          style="width:100px;text-align:right;padding:0.4rem 0.6rem;font-size:0.95rem;" />
+      </div>
+    </div>`).join('');
+
+  let currentStep = 0;
+
+  function goToStep(next) {
+    const from = $(`ob-step-${currentStep}`);
+    const to   = $(`ob-step-${next}`);
+    const goingForward = next > currentStep;
+
+    // Salida del paso actual
+    from.classList.add(goingForward ? 'out-left' : 'out-right');
+
+    // Entrada del siguiente
+    to.classList.remove('out-left', 'out-right');
+
+    // Dots
+    document.querySelectorAll('.ob-dot').forEach((d, i) => {
+      d.classList.toggle('active', i === next);
+    });
+
+    currentStep = next;
+  }
+
+  // Botón paso 0 → 1
+  $('ob-next-0').addEventListener('click', () => {
+    const name = $('ob-name').value.trim();
+    if (!name) { $('ob-name').focus(); toast('Ingresa tu nombre', 'error'); return; }
+    Profiles.update(null, { name });
+    $('ob-ready-title').textContent = `¡Estás listo, ${name}! 🎉`;
+    goToStep(1);
+  });
+
+  // Enter en el input de nombre
+  $('ob-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('ob-next-0').click();
+  });
+
+  // Botón paso 1 → 2 (guardar saldos)
+  function saveBalancesAndContinue() {
+    document.querySelectorAll('.ob-acc-input').forEach(input => {
+      const balance = parseFloat(input.value) || 0;
+      Accounts.update(input.dataset.accid, { initial_balance: balance });
+    });
+    goToStep(2);
+  }
+  $('ob-next-1').addEventListener('click', saveBalancesAndContinue);
+  $('ob-skip-1').addEventListener('click', () => goToStep(2));
+
+  // Botón final → entrar a la app
+  $('ob-finish').addEventListener('click', () => {
+    lsSet('cf_onboarding_done', true);
+    screen.classList.add('hidden');
+    showApp();
+  });
+}
+
 // ---- DASHBOARD ----
 async function loadDashboard() {
   const [txs, cats] = await Promise.all([
@@ -1620,9 +1695,14 @@ function initGoalForm() {
 
 // ---- INIT & EVENTS ----
 async function init() {
-  // Entrar directo a la app — sin login
   State.user = Auth.getUser();
-  showApp();
+
+  // Primera vez: mostrar onboarding
+  if (!lsGet('cf_onboarding_done', false)) {
+    showOnboarding();
+  } else {
+    showApp();
+  }
 
   // -- Navegación --
   document.querySelectorAll('[data-page]').forEach(el => {

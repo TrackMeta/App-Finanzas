@@ -821,6 +821,69 @@ html, body {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 /* =============================================
+   ONBOARDING
+============================================= */
+#screen-onboarding {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 2rem 1.5rem;
+  overflow: hidden;
+}
+#screen-onboarding.hidden { display: none; }
+
+.ob-steps {
+  width: 100%; max-width: 400px;
+  position: relative; overflow: hidden;
+}
+.ob-step {
+  width: 100%;
+  transition: transform 0.4s cubic-bezier(.4,0,.2,1), opacity 0.35s ease;
+  will-change: transform, opacity;
+}
+.ob-step.out-left  { transform: translateX(-110%); opacity: 0; position: absolute; top: 0; left: 0; }
+.ob-step.out-right { transform: translateX( 110%); opacity: 0; position: absolute; top: 0; left: 0; }
+
+.ob-logo {
+  font-size: 3.5rem; margin-bottom: 1rem;
+  animation: obBounce 0.6s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes obBounce {
+  from { transform: scale(0.3); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+.ob-title    { font-size: 1.6rem; font-weight: 800; margin-bottom: 0.4rem; text-align: center; }
+.ob-subtitle { font-size: 0.95rem; color: var(--text-muted); text-align: center; margin-bottom: 2rem; line-height: 1.5; }
+
+.ob-dots {
+  display: flex; gap: 0.4rem; justify-content: center;
+  margin-bottom: 2.5rem;
+}
+.ob-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--border); transition: all 0.3s;
+}
+.ob-dot.active { background: var(--emerald); width: 24px; border-radius: 4px; }
+
+.ob-account-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.6rem 0; border-bottom: 1px solid var(--border);
+}
+.ob-account-icon {
+  width: 40px; height: 40px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem; flex-shrink: 0;
+}
+.ob-feature {
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  padding: 0.6rem 0;
+}
+.ob-feature-icon { font-size: 1.4rem; flex-shrink: 0; margin-top: 2px; }
+.ob-feature-text p { font-size: 0.9rem; font-weight: 600; }
+.ob-feature-text small { font-size: 0.8rem; color: var(--text-muted); }
+
+/* =============================================
    PRINT / PDF
 ============================================= */
 #print-report { display: none; }
