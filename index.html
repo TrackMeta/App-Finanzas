@@ -546,6 +546,10 @@
         <div class="card">
           <div class="card-body divide-y">
             <div class="config-row">
+              <span>💱 Moneda</span>
+              <select id="currency-select" class="input" style="width:auto;padding:0.25rem 0.5rem;font-size:0.85rem;"></select>
+            </div>
+            <div class="config-row">
               <span>🌙 Tema oscuro</span>
               <button id="theme-toggle" class="toggle active"></button>
             </div>
@@ -559,8 +563,13 @@
                 class="input" style="width:110px;padding:0.3rem 0.5rem;font-size:0.9rem;" />
             </div>
             <div class="config-row" style="cursor:pointer;" id="btn-export-csv">
-              <span>📤 Exportar datos</span>
-              <span class="text-muted text-sm">CSV →</span>
+              <span>📤 Exportar CSV</span>
+              <span class="text-muted text-sm">Descargar →</span>
+            </div>
+            <div class="config-row" style="cursor:pointer;position:relative;" id="btn-import-csv-wrap">
+              <span>📥 Importar CSV</span>
+              <span class="text-muted text-sm">Desde Excel →</span>
+              <input type="file" id="input-import-csv" accept=".csv,.txt" style="position:absolute;inset:0;opacity:0;cursor:pointer;" />
             </div>
             <div class="config-row" style="cursor:pointer;" id="btn-export-pdf">
               <span>🖨️ Resumen mensual</span>
@@ -948,6 +957,44 @@
 
 <!-- Reporte imprimible (invisible hasta window.print()) -->
 <div id="print-report"></div>
+
+<!-- =============================================
+     MODAL: RESUMEN FIN DE MES
+============================================= -->
+<div id="overlay-month-summary" class="overlay hidden">
+  <div class="modal" style="max-width:380px;">
+    <div class="modal-header">
+      <h2 class="modal-title" id="ms-title">Resumen del mes</h2>
+      <button class="btn-icon close-modal" data-modal="month-summary">✕</button>
+    </div>
+    <div class="modal-body" style="gap:0.75rem;">
+      <p id="ms-subtitle" class="text-muted text-sm text-center"></p>
+      <!-- Stats -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;text-align:center;">
+        <div style="background:var(--emerald-dim);border-radius:12px;padding:0.75rem 0.25rem;">
+          <p class="text-xs text-muted">Ingresos</p>
+          <p id="ms-income" class="font-bold text-emerald text-sm"></p>
+        </div>
+        <div style="background:var(--rose-dim);border-radius:12px;padding:0.75rem 0.25rem;">
+          <p class="text-xs text-muted">Gastos</p>
+          <p id="ms-expenses" class="font-bold text-rose text-sm"></p>
+        </div>
+        <div id="ms-savings-card" style="border-radius:12px;padding:0.75rem 0.25rem;">
+          <p class="text-xs text-muted" id="ms-savings-label">Ahorro</p>
+          <p id="ms-savings" class="font-bold text-sm"></p>
+        </div>
+      </div>
+      <!-- Top categorías -->
+      <div id="ms-top-cats" style="display:flex;flex-direction:column;gap:0.4rem;"></div>
+      <!-- Mensaje coach -->
+      <div id="ms-coach-msg" style="background:var(--bg-secondary);border-radius:12px;padding:0.75rem;font-size:0.85rem;text-align:center;"></div>
+    </div>
+    <div class="modal-footer" style="gap:0.5rem;">
+      <button id="ms-btn-reports" class="btn btn-ghost" style="flex:1;">Ver reportes</button>
+      <button class="btn btn-primary close-modal" data-modal="month-summary" style="flex:1;">Empezar mes</button>
+    </div>
+  </div>
+</div>
 
 <!-- Toast notification -->
 <div id="toast" class="toast hidden">

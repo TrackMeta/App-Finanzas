@@ -67,16 +67,22 @@ function navigate(page) {
 
 // ---- SHOW APP ----
 function showApp() {
+  // Cargar moneda desde el perfil antes de renderizar nada
+  const profile = Profiles.get();
+  if (profile.currency) setCurrency(profile.currency);
+
   $('screen-app').classList.remove('hidden');
   $('screen-app').classList.add('active');
   loadDashboard();
 
+  // Resumen de fin de mes (primer acceso a un mes nuevo)
+  setTimeout(checkMonthSummary, 800);
+
   // Manejo de shortcuts PWA (?action=...)
   const action = new URLSearchParams(location.search).get('action');
-  if (action === 'expense')      setTimeout(() => openQuickAdd('expense'), 400);
-  else if (action === 'income')  setTimeout(() => openQuickAdd('income'), 400);
+  if (action === 'expense')           setTimeout(() => openQuickAdd('expense'), 400);
+  else if (action === 'income')       setTimeout(() => openQuickAdd('income'), 400);
   else if (action === 'transactions') setTimeout(() => navigate('transactions'), 300);
-  // Limpiar el parámetro de la URL sin recargar
   if (action) history.replaceState(null, '', location.pathname);
 }
 function showLogin() { /* sin login */ }
@@ -594,6 +600,31 @@ function renderTransactionsPage(txs) {
 }
 
 // ---- GOALS PAGE ----
+function calcGoalProjection(goal) {
+  const remaining = goal.target_amount - goal.current_amount;
+  if (remaining <= 0) return null;
+  const now = new Date();
+  // Ahorro promedio de los últimos 3 meses
+  const allTxs = lsGet('cf_transactions', []);
+  const samples = [];
+  for (let i = 1; i <= 3; i++) {
+    const d  = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y  = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0');
+    const start = `${y}-${m}-01`;
+    const end   = new Date(y, d.getMonth()+1, 0).toISOString().split('T')[0];
+    const mTxs  = allTxs.filter(t => t.date >= start && t.date <= end);
+    const inc   = mTxs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount, 0);
+    const exp   = mTxs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount, 0);
+    if (inc > 0) samples.push(inc - exp);
+  }
+  if (!samples.length) return null;
+  const avg = samples.reduce((a,b)=>a+b,0) / samples.length;
+  if (avg <= 0) return null;
+  const months = Math.ceil(remaining / avg);
+  const date   = new Date(now.getFullYear(), now.getMonth() + months, 1);
+  return { months, date, avgSavings: avg };
+}
+
 async function loadGoals() {
   const goals = await Goals.getAll();
   const total = goals.reduce((s,g)=>s+g.current_amount,0);
@@ -632,6 +663,7 @@ async function loadGoals() {
           <span class="font-bold">${fmt(g.target_amount)}</span>
         </div>
         ${!done&&daysLeft>0?`<p class="goal-daily">📌 Necesitas <strong>${fmt(daily)}/día</strong> para lograrlo</p>`:''}
+        ${!done ? (() => { const proj = calcGoalProjection(g); return proj ? `<p class="goal-daily text-muted">📈 A tu ritmo actual: <strong>${proj.months} mes${proj.months!==1?'es':''}</strong> (${proj.date.toLocaleDateString('es-PE',{month:'short',year:'numeric'})})</p>` : ''; })() : ''}
         <div class="goal-actions">
           ${!done?`<button class="btn btn-primary btn-sm flex-1" style="background:${g.color}" onclick="openContribute('${g.id}','${g.name}')">+ Aportar</button>`:''}
           <button class="btn btn-sm btn-ghost" onclick="openEditGoal('${g.id}')">✏️</button>
@@ -1613,6 +1645,18 @@ async function loadProfile() {
   // Categorías
   renderCategoriesList();
 
+  // Selector de moneda
+  const currSelect = $('currency-select');
+  currSelect.innerHTML = Object.entries(CURRENCIES)
+    .map(([code, c]) => `<option value="${code}" ${code === CURRENCY ? 'selected' : ''}>${c.name}</option>`)
+    .join('');
+  currSelect.onchange = () => {
+    setCurrency(currSelect.value);
+    Profiles.update(null, { currency: currSelect.value });
+    loadDashboard();
+    toast(`Moneda cambiada a ${CURRENCIES[currSelect.value].name} ✓`, 'success');
+  };
+
   // Mostrar nombre editable
   $('profile-name-edit').style.display = 'none';
   $('profile-name').parentElement.style.display = 'flex';
@@ -2061,8 +2105,16 @@ async function init() {
     if (!amount||amount<=0) { toast('Ingresa un monto válido', 'error'); return; }
     try {
       await Goals.contribute(State.selectedGoalId, amount, State.user.id, State.selectedGoalName);
-      toast(`Aporte de ${fmt(amount)} registrado`, 'success');
       closeOverlay('overlay-contribute');
+      // Verificar si la meta se completó
+      const goal = Goals.getAll().find(g => g.id === State.selectedGoalId);
+      if (goal && goal.current_amount >= goal.target_amount) {
+        toast(`🏆 ¡Meta "${State.selectedGoalName}" completada!`, 'success');
+        showConfetti();
+        Achievements.unlock('goal_completed');
+      } else {
+        toast(`Aporte de ${fmt(amount)} registrado ✓`, 'success');
+      }
       loadGoals();
     } catch { toast('Error al aportar', 'error'); }
   });
