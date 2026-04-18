@@ -25,11 +25,83 @@
 </head>
 <body>
 
-<!-- Elementos ocultos que necesita el JS -->
-<div id="screen-login" style="display:none;">
-  <form id="form-magic-link"><input type="email" id="input-email" /><button type="submit"></button></form>
-  <div id="magic-sent"><p id="magic-sent-email"></p></div>
-  <button id="btn-google"></button>
+<!-- =============================================
+     AUTH SCREEN – Login / Registro
+============================================= -->
+<div id="screen-auth" class="screen hidden">
+  <div class="auth-wrap">
+
+    <!-- Logo -->
+    <div class="auth-logo-wrap">
+      <img src="icons/icon-192.png" class="auth-logo-img" alt="Coach Finanzas" />
+      <h1 class="auth-brand">Coach Finanzas</h1>
+      <p class="auth-tagline">Tu entrenador financiero personal</p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="auth-tab-login"    onclick="showAuthTab('login')">Iniciar sesión</button>
+      <button class="auth-tab"        id="auth-tab-register" onclick="showAuthTab('register')">Crear cuenta</button>
+    </div>
+
+    <!-- Formulario LOGIN -->
+    <form id="form-login" class="auth-form" autocomplete="on">
+      <div id="login-error" class="auth-error hidden"></div>
+      <div class="input-group">
+        <label class="input-label">Correo electrónico</label>
+        <input id="login-email" type="email" class="input" placeholder="correo@ejemplo.com"
+          autocomplete="email" required />
+      </div>
+      <div class="input-group">
+        <label class="input-label">Contraseña</label>
+        <div class="input-pw-wrap">
+          <input id="login-password" type="password" class="input" placeholder="Tu contraseña"
+            autocomplete="current-password" required />
+          <button type="button" class="btn-pw-toggle" onclick="togglePwVisibility('login-password',this)">👁</button>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full btn-xl" id="btn-login-submit">
+        Entrar
+      </button>
+    </form>
+
+    <!-- Formulario REGISTRO -->
+    <form id="form-register" class="auth-form hidden" autocomplete="on">
+      <div id="register-error" class="auth-error hidden"></div>
+      <div class="input-group">
+        <label class="input-label">Nombre</label>
+        <input id="reg-name" type="text" class="input" placeholder="¿Cómo te llamamos?"
+          autocomplete="name" required maxlength="30" />
+      </div>
+      <div class="input-group">
+        <label class="input-label">Correo electrónico</label>
+        <input id="reg-email" type="email" class="input" placeholder="correo@ejemplo.com"
+          autocomplete="email" required />
+      </div>
+      <div class="input-group">
+        <label class="input-label">Contraseña</label>
+        <div class="input-pw-wrap">
+          <input id="reg-password" type="password" class="input" placeholder="Mínimo 6 caracteres"
+            autocomplete="new-password" required minlength="6" />
+          <button type="button" class="btn-pw-toggle" onclick="togglePwVisibility('reg-password',this)">👁</button>
+        </div>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Confirmar contraseña</label>
+        <div class="input-pw-wrap">
+          <input id="reg-confirm" type="password" class="input" placeholder="Repite la contraseña"
+            autocomplete="new-password" required />
+          <button type="button" class="btn-pw-toggle" onclick="togglePwVisibility('reg-confirm',this)">👁</button>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-full btn-xl" id="btn-register-submit">
+        Crear mi cuenta
+      </button>
+    </form>
+
+    <!-- Footer -->
+    <p class="auth-footer">Tus datos se guardan localmente en tu dispositivo 🔒</p>
+  </div>
 </div>
 
 <!-- =============================================
@@ -472,14 +544,6 @@
           </div>
         </div>
 
-        <!-- Proyección -->
-        <div class="card">
-          <div class="card-header"><h3 class="card-title">📈 Proyección de fin de mes</h3></div>
-          <div class="card-body" id="proj-body">
-            <p class="text-muted text-sm text-center">Cargando…</p>
-          </div>
-        </div>
-
         <!-- Lista de categorías -->
         <div class="card">
           <div class="card-header">
@@ -562,8 +626,11 @@
           </div>
         </div>
 
-        <button id="btn-logout" class="btn btn-outline btn-full text-rose">
-          🗑️ Borrar todos los datos
+        <button id="btn-logout" class="btn btn-ghost btn-full" style="color:var(--emerald);">
+          🚪 Cerrar sesión
+        </button>
+        <button id="btn-delete-data" class="btn btn-outline btn-full text-rose">
+          🗑️ Borrar todos mis datos
         </button>
       </div>
     </div>
@@ -753,10 +820,11 @@
 <div id="overlay-category" class="overlay hidden">
   <div class="modal">
     <div class="modal-header">
-      <h2 class="modal-title">Nueva categoría</h2>
+      <h2 class="modal-title" id="cat-modal-title">Nueva categoría</h2>
       <button class="btn-icon close-modal" data-modal="category">✕</button>
     </div>
     <form id="form-category" class="modal-body" style="display:flex;flex-direction:column;gap:0.75rem;">
+      <input type="hidden" id="cat-edit-id" />
       <div style="display:flex;gap:0.75rem;align-items:center;">
         <input id="cat-icon" class="input" style="width:64px;font-size:1.5rem;text-align:center;" placeholder="🏷️" maxlength="2" />
         <input id="cat-name" class="input" style="flex:1;" placeholder="Nombre de la categoría" required maxlength="20" />
@@ -769,7 +837,7 @@
         <p class="text-muted text-xs" style="margin-bottom:0.5rem;">Color</p>
         <div id="cat-color-picker" style="display:flex;flex-wrap:wrap;gap:0.5rem;"></div>
       </div>
-      <button type="submit" class="btn btn-primary btn-full">Crear categoría</button>
+      <button type="submit" id="cat-submit-btn" class="btn btn-primary btn-full">Crear categoría</button>
     </form>
   </div>
 </div>
@@ -982,6 +1050,7 @@
 
 <!-- Scripts -->
 <script src="js/config.js"></script>
+<script src="js/auth.js"></script>
 <script src="js/db.js"></script>
 <script src="js/analytics.js"></script>
 <script src="js/app.js"></script>

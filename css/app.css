@@ -88,7 +88,43 @@ html, body {
 .screen.active { display: flex; }
 
 /* =============================================
-   LOGIN
+   AUTH SCREEN
+============================================= */
+.auth-wrap {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 2rem 1.5rem; gap: 1.25rem;
+  max-width: 420px; margin: 0 auto; width: 100%; overflow-y: auto;
+}
+.auth-logo-wrap { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+.auth-logo-img  { width: 72px; height: 72px; border-radius: 20px; object-fit: cover; box-shadow: 0 8px 24px rgba(16,185,129,0.3); }
+.auth-brand     { font-size: 1.6rem; font-weight: 800; margin: 0; }
+.auth-tagline   { font-size: 0.875rem; color: var(--text-muted); margin: 0; }
+
+.auth-tabs      { display: flex; width: 100%; background: var(--bg-secondary); border-radius: var(--radius); padding: 4px; gap: 4px; }
+.auth-tab       {
+  flex: 1; padding: 0.5rem; border: none; border-radius: calc(var(--radius) - 2px);
+  background: transparent; color: var(--text-muted);
+  font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+}
+.auth-tab.active { background: var(--bg-card); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+
+.auth-form      { width: 100%; display: flex; flex-direction: column; gap: 0.875rem; }
+.auth-form.hidden { display: none; }
+.auth-error     { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3);
+  color: #f87171; border-radius: var(--radius-sm); padding: 0.625rem 0.75rem; font-size: 0.85rem; }
+.input-group    { display: flex; flex-direction: column; gap: 0.35rem; }
+.input-label    { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); padding-left: 2px; }
+.input-pw-wrap  { position: relative; }
+.input-pw-wrap .input { padding-right: 2.75rem; width: 100%; box-sizing: border-box; }
+.btn-pw-toggle  {
+  position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; font-size: 1rem; padding: 0.25rem;
+  color: var(--text-muted); opacity: 0.7;
+}
+.auth-footer    { font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-top: 0.5rem; }
+
+/* =============================================
+   LOGIN (legacy, kept for compatibility)
 ============================================= */
 .login-container {
   flex: 1;
@@ -653,6 +689,28 @@ html, body {
   display: flex; flex-direction: column; align-items: center;
   gap: 0.5rem; padding: 1rem 0;
 }
+/* =============================================
+   CATEGORÍAS – filas con editar/eliminar
+============================================= */
+.cat-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.5rem 0.25rem; border-radius: var(--radius-sm);
+  transition: background 0.12s;
+}
+.cat-row:hover { background: var(--bg-secondary); }
+.cat-row-icon {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 1rem;
+}
+.cat-row-name  { flex: 1; font-size: 0.9rem; }
+.cat-row-actions { display: flex; gap: 0.25rem; opacity: 0; transition: opacity 0.15s; }
+.cat-row:hover .cat-row-actions { opacity: 1; }
+/* En móvil siempre visible */
+@media (max-width: 640px) { .cat-row-actions { opacity: 1; } }
+
+/* =============================================
+   AVATAR
+============================================= */
 .avatar-wrap { position: relative; display: inline-block; }
 .avatar {
   width: 80px; height: 80px; border-radius: 50%;

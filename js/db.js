@@ -1,5 +1,5 @@
 // =============================================
-// DB – localStorage (sin login, funciona offline)
+// DB – localStorage con soporte multi-usuario
 // =============================================
 
 function lsGet(key, def) {
@@ -8,6 +8,15 @@ function lsGet(key, def) {
 }
 function lsSet(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 function uid() { return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2); }
+
+// Clave con namespace de usuario actual
+function _uid_prefix() {
+  try {
+    const s = localStorage.getItem('cf_session');
+    return s ? JSON.parse(s).id : 'local';
+  } catch { return 'local'; }
+}
+function uk(key) { return `${key}_${_uid_prefix()}`; }
 
 // ---- CATEGORÍAS POR DEFECTO ----
 const DEFAULT_CATS = [
@@ -28,19 +37,22 @@ const DEFAULT_CATS = [
   { id: 'cat-15', name: 'Otros ingresos',icon: '💰', color: '#6B7280', type: 'income'  },
 ];
 
-// ---- AUTH (mock – sin login) ----
+// ---- AUTH (delegado a AuthService en auth.js) ----
 const Auth = {
-  getUser()        { return { id: 'local', email: 'usuario@local' }; },
-  onAuthChange()   {},
-  async signOut()  {}
+  getUser() {
+    const s = AuthService.getSession();
+    return s ? { id: s.id, email: s.email, name: s.name } : { id: 'local', email: 'usuario@local' };
+  },
+  onAuthChange() {},
+  async signOut() { AuthService.logout(); },
 };
 
 // ---- PROFILES ----
 const Profiles = {
-  get()          { return lsGet('cf_profile', { id: 'local', name: 'Usuario', currency: 'PEN' }); },
+  get()          { return lsGet(uk('cf_profile'), { id: _uid_prefix(), name: 'Usuario', currency: 'PEN' }); },
   update(_, upd) {
     const p = { ...Profiles.get(), ...upd };
-    lsSet('cf_profile', p);
+    lsSet(uk('cf_profile'), p);
     return p;
   }
 };
@@ -48,68 +60,79 @@ const Profiles = {
 // ---- CATEGORIES ----
 const Categories = {
   getAll(type) {
-    if (!lsGet('cf_cats_init', false)) { lsSet('cf_categories', DEFAULT_CATS); lsSet('cf_cats_init', true); }
-    const cats = lsGet('cf_categories', DEFAULT_CATS);
+    if (!lsGet(uk('cf_cats_init'), false)) {
+      lsSet(uk('cf_categories'), DEFAULT_CATS);
+      lsSet(uk('cf_cats_init'), true);
+    }
+    const cats = lsGet(uk('cf_categories'), DEFAULT_CATS);
     if (!type || type === 'both') return cats;
     if (type === 'expense') return cats.filter(c => c.type === 'expense' || c.type === 'both');
     if (type === 'income')  return cats.filter(c => c.type === 'income'  || c.type === 'both');
     return cats;
+  },
+  update(id, changes) {
+    const all = lsGet(uk('cf_categories'), DEFAULT_CATS);
+    const idx = all.findIndex(c => c.id === id);
+    if (idx >= 0) { all[idx] = { ...all[idx], ...changes }; lsSet(uk('cf_categories'), all); }
+  },
+  remove(id) {
+    lsSet(uk('cf_categories'), lsGet(uk('cf_categories'), DEFAULT_CATS).filter(c => c.id !== id));
   }
 };
 
 // ---- TRANSACTIONS ----
 const Transactions = {
-  _cats() { return lsGet('cf_categories', DEFAULT_CATS); },
+  _cats() { return lsGet(uk('cf_categories'), DEFAULT_CATS); },
   _enrich(t) { return { ...t, category: this._cats().find(c => c.id === t.category_id) ?? null }; },
 
   getByMonth(month) {
     const [y, m] = month.split('-');
     const start = `${y}-${m}-01`;
     const end   = new Date(y, m, 0).toISOString().split('T')[0];
-    return lsGet('cf_transactions', [])
+    return lsGet(uk('cf_transactions'), [])
       .filter(t => t.date >= start && t.date <= end)
       .map(t => this._enrich(t))
       .sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at));
   },
 
   getByDateRange(from, to) {
-    return lsGet('cf_transactions', [])
+    return lsGet(uk('cf_transactions'), [])
       .filter(t => t.date >= from && t.date <= to)
       .map(t => this._enrich(t))
       .sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at));
   },
 
   getRecent(limit = 10) {
-    return lsGet('cf_transactions', [])
+    return lsGet(uk('cf_transactions'), [])
       .slice(-limit).reverse()
       .map(t => this._enrich(t));
   },
 
   add(tx) {
-    const all = lsGet('cf_transactions', []);
+    const all   = lsGet(uk('cf_transactions'), []);
     const newTx = { ...tx, id: uid(), created_at: new Date().toISOString() };
     all.push(newTx);
-    lsSet('cf_transactions', all);
+    lsSet(uk('cf_transactions'), all);
     return this._enrich(newTx);
   },
 
   update(id, changes) {
-    const all = lsGet('cf_transactions', []);
+    const all = lsGet(uk('cf_transactions'), []);
     const idx = all.findIndex(t => t.id === id);
     if (idx < 0) return;
     all[idx] = { ...all[idx], ...changes };
-    lsSet('cf_transactions', all);
+    lsSet(uk('cf_transactions'), all);
     return this._enrich(all[idx]);
   },
 
   remove(id) {
-    lsSet('cf_transactions', lsGet('cf_transactions', []).filter(t => t.id !== id));
+    lsSet(uk('cf_transactions'), lsGet(uk('cf_transactions'), []).filter(t => t.id !== id));
   }
 };
 
 // ---- BUDGETS ----
 const Budgets = {
-  _key(month) { return `cf_budgets_${month}`; },
+  _key(month) { return uk(`cf_budgets_${month}`); },
   getAll(month) { return lsGet(Budgets._key(month), []); },
   set(month, categoryId, limit) {
     const all = Budgets.getAll(month).filter(b => b.category_id !== categoryId);
@@ -121,21 +144,22 @@ const Budgets = {
 
 // ---- GOALS ----
 const Goals = {
-  getAll() { return lsGet('cf_goals', []); },
+  getAll() { return lsGet(uk('cf_goals'), []); },
 
   add(goal) {
-    const all = lsGet('cf_goals', []);
-    const g = { ...goal, id: uid(), created_at: new Date().toISOString() };
-    all.push(g); lsSet('cf_goals', all);
+    const all = lsGet(uk('cf_goals'), []);
+    const g   = { ...goal, id: uid(), created_at: new Date().toISOString() };
+    all.push(g);
+    lsSet(uk('cf_goals'), all);
     return g;
   },
 
   contribute(goalId, amount, userId, goalName) {
-    const all = lsGet('cf_goals', []);
-    const i = all.findIndex(g => g.id === goalId);
+    const all = lsGet(uk('cf_goals'), []);
+    const i   = all.findIndex(g => g.id === goalId);
     if (i >= 0) {
       all[i].current_amount = Math.min((all[i].current_amount || 0) + amount, all[i].target_amount);
-      lsSet('cf_goals', all);
+      lsSet(uk('cf_goals'), all);
     }
     Transactions.add({
       user_id: userId, type: 'expense', amount,
@@ -145,77 +169,76 @@ const Goals = {
   },
 
   update(id, changes) {
-    const all = lsGet('cf_goals', []);
-    const i = all.findIndex(g => g.id === id);
-    if (i >= 0) { all[i] = { ...all[i], ...changes }; lsSet('cf_goals', all); return all[i]; }
+    const all = lsGet(uk('cf_goals'), []);
+    const i   = all.findIndex(g => g.id === id);
+    if (i >= 0) { all[i] = { ...all[i], ...changes }; lsSet(uk('cf_goals'), all); return all[i]; }
   },
-  remove(id) { lsSet('cf_goals', lsGet('cf_goals', []).filter(g => g.id !== id)); }
+  remove(id) { lsSet(uk('cf_goals'), lsGet(uk('cf_goals'), []).filter(g => g.id !== id)); }
 };
 
 // ---- DEBTS ----
 const Debts = {
-  getAll() { return lsGet('cf_debts', []); },
+  getAll() { return lsGet(uk('cf_debts'), []); },
 
   add(debt) {
-    const all = lsGet('cf_debts', []);
-    const d = { ...debt, id: uid(), created_at: new Date().toISOString() };
-    all.push(d); lsSet('cf_debts', all);
+    const all = lsGet(uk('cf_debts'), []);
+    const d   = { ...debt, id: uid(), created_at: new Date().toISOString() };
+    all.push(d);
+    lsSet(uk('cf_debts'), all);
     return d;
   },
 
   pay(id, amount) {
-    const all = lsGet('cf_debts', []);
-    const i = all.findIndex(d => d.id === id);
+    const all = lsGet(uk('cf_debts'), []);
+    const i   = all.findIndex(d => d.id === id);
     if (i < 0) return null;
     all[i].paid = Math.min((all[i].paid || 0) + amount, all[i].total);
     all[i].paid_installments = (all[i].paid_installments || 0) + 1;
-    // Avanzar fecha de próximo pago ~1 mes
     if (all[i].next_payment_date) {
       const d = new Date(all[i].next_payment_date);
       d.setMonth(d.getMonth() + 1);
       all[i].next_payment_date = d.toISOString().split('T')[0];
     }
-    lsSet('cf_debts', all);
+    lsSet(uk('cf_debts'), all);
     return all[i];
   },
-  remove(id) { lsSet('cf_debts', lsGet('cf_debts', []).filter(d => d.id !== id)); }
+  remove(id) { lsSet(uk('cf_debts'), lsGet(uk('cf_debts'), []).filter(d => d.id !== id)); }
 };
 
 // ---- ACCOUNTS (billeteras) ----
 const DEFAULT_ACCOUNTS = [
-  { id: 'acc-01', name: 'Efectivo',  icon: '💵', color: '#10B981', initial_balance: 0 },
-  { id: 'acc-02', name: 'Banco',     icon: '🏦', color: '#3B82F6', initial_balance: 0 },
-  { id: 'acc-03', name: 'Digital',   icon: '📱', color: '#8B5CF6', initial_balance: 0 },
+  { id: 'acc-01', name: 'Efectivo', icon: '💵', color: '#10B981', initial_balance: 0 },
+  { id: 'acc-02', name: 'Banco',    icon: '🏦', color: '#3B82F6', initial_balance: 0 },
+  { id: 'acc-03', name: 'Digital',  icon: '📱', color: '#8B5CF6', initial_balance: 0 },
 ];
 
 const Accounts = {
   getAll() {
-    if (!lsGet('cf_accs_init', false)) {
-      lsSet('cf_accounts', DEFAULT_ACCOUNTS);
-      lsSet('cf_accs_init', true);
+    if (!lsGet(uk('cf_accs_init'), false)) {
+      lsSet(uk('cf_accounts'), DEFAULT_ACCOUNTS);
+      lsSet(uk('cf_accs_init'), true);
     }
-    return lsGet('cf_accounts', DEFAULT_ACCOUNTS);
+    return lsGet(uk('cf_accounts'), DEFAULT_ACCOUNTS);
   },
   add(acc) {
     const all = this.getAll();
-    const a = { ...acc, id: uid() };
+    const a   = { ...acc, id: uid() };
     all.push(a);
-    lsSet('cf_accounts', all);
+    lsSet(uk('cf_accounts'), all);
     return a;
   },
   update(id, changes) {
     const all = this.getAll();
-    const i = all.findIndex(a => a.id === id);
-    if (i >= 0) { all[i] = { ...all[i], ...changes }; lsSet('cf_accounts', all); }
+    const i   = all.findIndex(a => a.id === id);
+    if (i >= 0) { all[i] = { ...all[i], ...changes }; lsSet(uk('cf_accounts'), all); }
   },
   remove(id) {
-    lsSet('cf_accounts', lsGet('cf_accounts', []).filter(a => a.id !== id));
+    lsSet(uk('cf_accounts'), lsGet(uk('cf_accounts'), []).filter(a => a.id !== id));
   },
-  // Saldo = saldo_inicial + ingresos − gastos + transferencias
   getBalance(id) {
-    const acc = this.getAll().find(a => a.id === id);
+    const acc     = this.getAll().find(a => a.id === id);
     const initial = acc?.initial_balance || 0;
-    const txs = lsGet('cf_transactions', []);
+    const txs     = lsGet(uk('cf_transactions'), []);
     return txs.reduce((bal, t) => {
       if (t.type === 'transfer') {
         if (t.to_account   === id) return bal + t.amount;
@@ -233,25 +256,25 @@ const Accounts = {
 // ---- STREAKS ----
 const Streaks = {
   get() {
-    return lsGet('cf_streaks', { current_streak: 0, longest_streak: 0, last_log_date: null });
+    return lsGet(uk('cf_streaks'), { current_streak: 0, longest_streak: 0, last_log_date: null });
   },
   update() {
-    const s = Streaks.get();
-    const today = new Date().toISOString().split('T')[0];
-    if (s.last_log_date === today) return;
+    const s         = Streaks.get();
+    const todayStr  = new Date().toISOString().split('T')[0];
+    if (s.last_log_date === todayStr) return;
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     s.current_streak = s.last_log_date === yesterday ? s.current_streak + 1 : 1;
     s.longest_streak = Math.max(s.current_streak, s.longest_streak);
-    s.last_log_date = today;
-    lsSet('cf_streaks', s);
+    s.last_log_date  = todayStr;
+    lsSet(uk('cf_streaks'), s);
   }
 };
 
 // ---- ACHIEVEMENTS ----
 const Achievements = {
-  getAll() { return lsGet('cf_achievements', []); },
-  unlock(type) {
+  getAll()      { return lsGet(uk('cf_achievements'), []); },
+  unlock(type)  {
     const all = Achievements.getAll();
-    if (!all.includes(type)) { all.push(type); lsSet('cf_achievements', all); }
+    if (!all.includes(type)) { all.push(type); lsSet(uk('cf_achievements'), all); }
   }
 };

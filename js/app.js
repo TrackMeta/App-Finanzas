@@ -220,7 +220,7 @@ function showApp() {
   else if (action === 'transactions') setTimeout(() => navigate('transactions'), 300);
   if (action) history.replaceState(null, '', location.pathname);
 }
-function showLogin() { /* sin login */ }
+function showLogin() { showAuthScreen(); }
 
 // ---- ONBOARDING ----
 function showOnboarding() {
@@ -291,7 +291,7 @@ function showOnboarding() {
 
   // Botón final → entrar a la app
   $('ob-finish').addEventListener('click', () => {
-    lsSet('cf_onboarding_done', true);
+    lsSet(uk('cf_onboarding_done'), true);
     screen.classList.add('hidden');
     showApp();
   });
@@ -1196,16 +1196,8 @@ async function loadCategories() {
 
   // Presupuestos — siempre por mes actual (o mes del período si filter=month)
   const budgetMonth = State.dateFilter === 'month' ? State.currentMonth : new Date().toISOString().slice(0,7);
-  const budgets = Budgets.getAll(budgetMonth);
+  const budgets     = Budgets.getAll(budgetMonth);
   renderBudgetsList(txs, cats, budgets);
-
-  // Proyección / Resumen
-  const thisMonthKey = new Date().toISOString().slice(0,7);
-  const isPastPeriod = (State.dateFilter === 'month' && State.currentMonth < thisMonthKey)
-                    || (!['month','total'].includes(State.dateFilter) && to < today());
-  const incomeTotal  = txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
-  const expTotal     = txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
-  renderProjection(txs, isPastPeriod, incomeTotal, expTotal);
 
   // Categorías
   renderCategoriesList();
@@ -2055,22 +2047,50 @@ async function loadProfile() {
 const CAT_COLORS = ['#F59E0B','#3B82F6','#8B5CF6','#EF4444','#EC4899','#06B6D4','#10B981','#F97316','#84CC16','#6B7280'];
 
 function renderCategoriesList() {
-  const cats = Categories.getAll();
+  const cats      = Categories.getAll();
   const container = $('categories-list');
-  const defaultIds = ['cat-01','cat-02','cat-03','cat-04','cat-05','cat-06','cat-07','cat-08','cat-09','cat-10','cat-11','cat-12','cat-13','cat-14','cat-15'];
-  container.innerHTML = cats.map(c => `
-    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.4rem 0;">
-      <span style="width:28px;height:28px;border-radius:50%;background:${c.color}22;display:flex;align-items:center;justify-content:center;font-size:1rem;">${c.icon}</span>
-      <span style="flex:1;font-size:0.9rem;">${c.name}</span>
-      <span class="text-muted text-xs">${c.type === 'income' ? 'Ingreso' : 'Gasto'}</span>
-      ${!defaultIds.includes(c.id) ? `<button class="btn-icon text-rose btn-del-cat" data-id="${c.id}" style="font-size:0.85rem;">✕</button>` : ''}
-    </div>`).join('');
+  if (!container) return;
+
+  if (!cats.length) {
+    container.innerHTML = '<p class="text-muted text-sm text-center" style="padding:1rem 0;">No hay categorías. ¡Crea una!</p>';
+    return;
+  }
+
+  // Separar por tipo
+  const expenses = cats.filter(c => c.type === 'expense');
+  const incomes  = cats.filter(c => c.type === 'income');
+
+  const renderGroup = (list, label) => {
+    if (!list.length) return '';
+    return `
+      <p class="text-muted text-xs font-semibold" style="padding:0.5rem 0 0.25rem;text-transform:uppercase;letter-spacing:.06em;">${label}</p>
+      ${list.map(c => `
+        <div class="cat-row" data-id="${c.id}">
+          <span class="cat-row-icon" style="background:${c.color}22;">${c.icon}</span>
+          <span class="cat-row-name">${c.name}</span>
+          <div class="cat-row-actions">
+            <button class="btn-icon btn-edit-cat" data-id="${c.id}" title="Editar">✏️</button>
+            <button class="btn-icon btn-del-cat text-rose" data-id="${c.id}" title="Eliminar">🗑️</button>
+          </div>
+        </div>`).join('')}`;
+  };
+
+  container.innerHTML = renderGroup(expenses, 'Gastos') + renderGroup(incomes, 'Ingresos');
+
+  container.querySelectorAll('.btn-edit-cat').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cat = cats.find(c => c.id === btn.dataset.id);
+      if (cat) openCategoryModal(cat);
+    });
+  });
 
   container.querySelectorAll('.btn-del-cat').forEach(btn => {
     btn.addEventListener('click', () => {
-      if (confirm('¿Eliminar esta categoría?')) {
-        const all = lsGet('cf_categories', []).filter(c => c.id !== btn.dataset.id);
-        lsSet('cf_categories', all);
+      const cat = cats.find(c => c.id === btn.dataset.id);
+      if (!cat) return;
+      const msg = `¿Eliminar la categoría "${cat.name}"?\nLos movimientos que la usan quedarán sin categoría.`;
+      if (confirm(msg)) {
+        Categories.remove(btn.dataset.id);
         renderCategoriesList();
         toast('Categoría eliminada', '');
       }
@@ -2078,15 +2098,27 @@ function renderCategoriesList() {
   });
 }
 
-function openCategoryModal() {
-  const picker = $('cat-color-picker');
-  let selectedColor = '#10B981';
-  $('cat-icon').value = '';
-  $('cat-name').value = '';
+function openCategoryModal(editCat = null) {
+  const isEdit       = !!editCat;
+  const picker       = $('cat-color-picker');
+  let selectedColor  = editCat?.color || '#10B981';
+
+  // Actualizar modal según modo
+  $('cat-modal-title').textContent  = isEdit ? 'Editar categoría' : 'Nueva categoría';
+  $('cat-submit-btn').textContent   = isEdit ? 'Guardar cambios'  : 'Crear categoría';
+  $('cat-edit-id').value            = editCat?.id || '';
+  $('cat-icon').value               = editCat?.icon || '';
+  $('cat-name').value               = editCat?.name || '';
+  $('cat-type').value               = editCat?.type || 'expense';
+
+  // Render color picker
   picker.innerHTML = CAT_COLORS.map(c => `
     <button type="button" class="color-btn cat-color-opt ${c===selectedColor?'selected':''}"
-      data-color="${c}" style="background:${c};width:28px;height:28px;border-radius:50%;border:2px solid ${c===selectedColor?'white':'transparent'};"></button>`
+      data-color="${c}"
+      style="background:${c};width:28px;height:28px;border-radius:50%;
+             border:2px solid ${c===selectedColor?'white':'transparent'};"></button>`
   ).join('');
+
   picker.querySelectorAll('.cat-color-opt').forEach(btn => {
     btn.addEventListener('click', () => {
       selectedColor = btn.dataset.color;
@@ -2096,20 +2128,28 @@ function openCategoryModal() {
       });
     });
   });
+
   $('form-category').onsubmit = (e) => {
     e.preventDefault();
     const name = $('cat-name').value.trim();
     const icon = $('cat-icon').value.trim() || '🏷️';
     const type = $('cat-type').value;
     if (!name) return;
-    const all = lsGet('cf_categories', []);
-    all.push({ id: uid(), name, icon, color: selectedColor, type });
-    lsSet('cf_categories', all);
+
+    if (isEdit) {
+      Categories.update($('cat-edit-id').value, { name, icon, color: selectedColor, type });
+      toast('Categoría actualizada ✓', 'success');
+    } else {
+      const all = lsGet(uk('cf_categories'), DEFAULT_CATS);
+      all.push({ id: uid(), name, icon, color: selectedColor, type });
+      lsSet(uk('cf_categories'), all);
+      toast('Categoría creada ✓', 'success');
+    }
     closeOverlay('overlay-category');
     renderCategoriesList();
-    toast('Categoría creada ✓', 'success');
     $('form-category').reset();
   };
+
   openOverlay('overlay-category');
 }
 
@@ -2324,12 +2364,91 @@ function initGoalForm() {
   });
 }
 
+// ---- AUTH UI ----
+function showAuthScreen() {
+  document.querySelectorAll('.screen').forEach(s => { s.classList.add('hidden'); s.classList.remove('active'); });
+  $('screen-auth').classList.remove('hidden');
+  $('screen-auth').classList.add('active');
+}
+
+function showAuthTab(tab) {
+  const isLogin = tab === 'login';
+  $('auth-tab-login').classList.toggle('active', isLogin);
+  $('auth-tab-register').classList.toggle('active', !isLogin);
+  $('form-login').classList.toggle('hidden', !isLogin);
+  $('form-register').classList.toggle('hidden', isLogin);
+  $('login-error').classList.add('hidden');
+  $('register-error').classList.add('hidden');
+}
+
+function showAuthError(formId, msg) {
+  const el = $(formId + '-error');
+  if (el) { el.textContent = msg; el.classList.remove('hidden'); }
+}
+
+function togglePwVisibility(inputId, btn) {
+  const input = $(inputId);
+  if (!input) return;
+  const isText = input.type === 'text';
+  input.type = isText ? 'password' : 'text';
+  btn.textContent = isText ? '👁' : '🙈';
+}
+
 // ---- INIT & EVENTS ----
 async function init() {
-  State.user = Auth.getUser();
+  // ─ Verificar sesión ─
+  if (!AuthService.isLoggedIn()) {
+    showAuthScreen();
+    setupAuthForms();
+    return; // Detener init hasta que el usuario inicie sesión
+  }
 
-  // Primera vez: mostrar onboarding
-  if (!lsGet('cf_onboarding_done', false)) {
+  State.user = Auth.getUser();
+  continueInit();
+}
+
+function setupAuthForms() {
+  // LOGIN
+  $('form-login').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('btn-login-submit');
+    btn.textContent = 'Entrando…'; btn.disabled = true;
+    $('login-error').classList.add('hidden');
+    try {
+      await AuthService.login($('login-email').value, $('login-password').value);
+      State.user = Auth.getUser();
+      continueInit();
+    } catch (err) {
+      showAuthError('login', err.message);
+      btn.textContent = 'Entrar'; btn.disabled = false;
+    }
+  });
+
+  // REGISTRO
+  $('form-register').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('btn-register-submit');
+    btn.textContent = 'Creando cuenta…'; btn.disabled = true;
+    $('register-error').classList.add('hidden');
+    try {
+      if ($('reg-password').value !== $('reg-confirm').value) throw new Error('Las contraseñas no coinciden');
+      await AuthService.register($('reg-name').value, $('reg-email').value, $('reg-password').value);
+      State.user = Auth.getUser();
+      continueInit();
+    } catch (err) {
+      showAuthError('register', err.message);
+      btn.textContent = 'Crear mi cuenta'; btn.disabled = false;
+    }
+  });
+}
+
+async function continueInit() {
+  // Ocultar pantalla de auth si estaba visible
+  const authScreen = $('screen-auth');
+  if (authScreen) { authScreen.classList.add('hidden'); authScreen.classList.remove('active'); }
+
+  // Primera vez (por usuario): mostrar onboarding
+  if (!lsGet(uk('cf_onboarding_done'), false)) {
     showOnboarding();
   } else {
     showApp();
@@ -2639,10 +2758,22 @@ async function init() {
   // -- Notificaciones --
   setupNotifications();
 
-  // -- Logout --
+  // -- Cerrar sesión --
   $('btn-logout').addEventListener('click', () => {
-    if (confirm('¿Borrar TODOS los datos? Esta acción no se puede deshacer.')) {
-      localStorage.clear();
+    if (confirm('¿Cerrar sesión?')) {
+      AuthService.logout();
+      location.reload();
+    }
+  });
+
+  // -- Borrar datos del usuario actual --
+  $('btn-delete-data')?.addEventListener('click', () => {
+    if (confirm('¿Borrar TODOS tus datos? Esta acción no se puede deshacer.')) {
+      const prefix = `_${State.user?.id || 'local'}`;
+      Object.keys(localStorage)
+        .filter(k => k.endsWith(prefix) || k === 'cf_session')
+        .forEach(k => localStorage.removeItem(k));
+      AuthService.logout();
       location.reload();
     }
   });
