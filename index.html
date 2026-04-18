@@ -325,8 +325,14 @@
           <button class="filter-btn" data-filter="recurring">🔁 Fijos</button>
         </div>
 
-        <!-- Filtros categoría -->
-        <div class="filter-row" id="tx-cat-filters" style="flex-wrap:wrap;gap:0.4rem;"></div>
+        <!-- Filtros categoría — colapsable -->
+        <div id="tx-cat-filter-wrap">
+          <button id="tx-cat-toggle" class="cat-filter-toggle">
+            <span id="tx-cat-toggle-label">🏷️ Filtrar por categoría</span>
+            <span id="tx-cat-toggle-arrow">▼</span>
+          </button>
+          <div class="filter-row hidden" id="tx-cat-filters" style="margin-top:0.4rem;padding-bottom:4px;"></div>
+        </div>
 
         <!-- Lista -->
         <div id="transactions-list" class="tx-list"></div>
@@ -575,15 +581,50 @@
     <button id="fab" class="fab">
       <span class="fab-icon">+</span>
     </button>
-    <a href="#" class="tab" data-page="goals">
-      <span class="tab-icon">🎯</span>
-      <span class="tab-label">Metas</span>
-    </a>
     <a href="#" class="tab" data-page="insights">
       <span class="tab-icon">📈</span>
       <span class="tab-label">Análisis</span>
     </a>
+    <button class="tab" id="tab-more">
+      <span class="tab-icon">⋯</span>
+      <span class="tab-label">Más</span>
+    </button>
   </nav>
+
+  <!-- Sheet: Menú Más (móvil) -->
+  <div id="overlay-more" class="overlay hidden">
+    <div class="sheet" style="max-height:auto;">
+      <div class="sheet-handle"></div>
+      <div style="padding:0.25rem 1rem 0.5rem;">
+        <p style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);padding:0.5rem 0 0.75rem;">Navegación</p>
+      </div>
+      <div class="more-menu-grid">
+        <button class="more-menu-item" data-page="goals">
+          <span class="more-menu-icon">🎯</span>
+          <span>Metas</span>
+        </button>
+        <button class="more-menu-item" data-page="debts">
+          <span class="more-menu-icon">💳</span>
+          <span>Deudas</span>
+        </button>
+        <button class="more-menu-item" data-page="calendar">
+          <span class="more-menu-icon">📅</span>
+          <span>Calendario</span>
+        </button>
+        <button class="more-menu-item" data-page="reports">
+          <span class="more-menu-icon">📊</span>
+          <span>Reportes</span>
+        </button>
+        <button class="more-menu-item" data-page="profile">
+          <span class="more-menu-icon">👤</span>
+          <span>Perfil</span>
+        </button>
+      </div>
+      <div style="padding:0.75rem 1rem 1.5rem;">
+        <button class="btn btn-ghost btn-full" id="btn-close-more" style="color:var(--text-muted);font-size:0.875rem;">Cerrar</button>
+      </div>
+    </div>
+  </div>
 
 </div><!-- /screen-app -->
 
@@ -832,9 +873,13 @@
       <button class="btn-icon close-modal" data-modal="accounts">✕</button>
     </div>
     <div class="modal-body" style="display:flex;flex-direction:column;gap:0.75rem;">
-      <div id="accounts-list" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
-      <hr style="border-color:var(--border);" />
-      <p style="font-size:0.8rem;font-weight:700;color:var(--text-muted);">NUEVA CUENTA</p>
+      <!-- Lista de cuentas existentes -->
+      <div id="accounts-list" style="display:flex;flex-direction:column;gap:0.25rem;"></div>
+
+      <hr style="border-color:var(--border);margin:0.25rem 0;" />
+
+      <!-- Form nueva cuenta -->
+      <p style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;">Nueva cuenta</p>
       <form id="form-account" style="display:flex;flex-direction:column;gap:0.6rem;">
         <div style="display:flex;gap:0.5rem;">
           <input id="acc-icon" class="input" style="width:56px;font-size:1.4rem;text-align:center;" placeholder="💵" maxlength="2" />
@@ -845,7 +890,7 @@
           <input id="acc-balance" type="number" class="input" style="flex:1;" placeholder="0" min="0" step="0.01" value="0" />
         </div>
         <div id="acc-color-picker" style="display:flex;gap:0.5rem;flex-wrap:wrap;"></div>
-        <button type="submit" class="btn btn-primary btn-full">Agregar cuenta</button>
+        <button type="submit" class="btn btn-primary btn-full">+ Agregar cuenta</button>
       </form>
     </div>
   </div>

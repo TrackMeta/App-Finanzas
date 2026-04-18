@@ -1061,31 +1061,94 @@ function openAccountsModal() {
   openOverlay('overlay-accounts');
 }
 
+const ACC_COLORS = ['#10B981','#3B82F6','#8B5CF6','#F59E0B','#EC4899','#06B6D4','#EF4444','#F97316'];
+
 function renderAccountsList() {
   const accs = Accounts.getAll();
-  const defaultIds = ['acc-01', 'acc-02', 'acc-03'];
-  $('accounts-list').innerHTML = accs.map(acc => {
+  const container = $('accounts-list');
+  container.innerHTML = '';
+
+  accs.forEach(acc => {
     const bal = Accounts.getBalance(acc.id);
-    return `
-      <div style="display:flex;align-items:center;gap:0.75rem;padding:0.3rem 0;">
-        <span style="font-size:1.25rem;">${acc.icon}</span>
-        <div style="flex:1;">
-          <p style="font-size:0.9rem;font-weight:600;">${acc.name}</p>
-          <p style="font-size:0.75rem;color:${acc.color};font-family:monospace;">${fmt(bal)}</p>
-        </div>
-        ${!defaultIds.includes(acc.id)
-          ? `<button class="btn-icon text-rose btn-del-acc" data-id="${acc.id}" style="font-size:0.85rem;background:none;">✕</button>`
-          : ''}
+
+    // Fila principal
+    const row = document.createElement('div');
+    row.className = 'acc-item';
+    row.innerHTML = `
+      <div style="width:38px;height:38px;border-radius:12px;background:${acc.color}20;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;">${acc.icon}</div>
+      <div style="flex:1;min-width:0;">
+        <p style="font-size:0.875rem;font-weight:600;">${acc.name}</p>
+        <p style="font-size:0.75rem;color:${acc.color};font-family:monospace;">${fmt(bal)}</p>
+      </div>
+      <button class="btn btn-sm btn-ghost acc-edit-btn" data-id="${acc.id}" title="Editar" style="color:var(--text-muted);padding:0.3rem 0.5rem;">✏️</button>
+      <button class="btn btn-sm btn-danger acc-del-btn" data-id="${acc.id}" title="Eliminar" style="padding:0.3rem 0.5rem;">✕</button>`;
+
+    // Form de edición (oculto por defecto)
+    const editForm = document.createElement('div');
+    editForm.className = 'acc-edit-form hidden';
+    editForm.dataset.id = acc.id;
+    editForm.innerHTML = `
+      <div style="display:flex;gap:0.5rem;">
+        <input class="input acc-ef-icon" style="width:52px;font-size:1.3rem;text-align:center;" value="${acc.icon}" maxlength="2" placeholder="💵"/>
+        <input class="input acc-ef-name" style="flex:1;" value="${acc.name}" maxlength="20" placeholder="Nombre"/>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center;">
+        <label style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap;">Saldo base (S/)</label>
+        <input type="number" class="input acc-ef-balance" style="flex:1;" value="${acc.initial_balance ?? 0}" min="0" step="0.01"/>
+      </div>
+      <div class="acc-edit-colors">
+        ${ACC_COLORS.map(c => `<button type="button" class="acc-ef-color" data-color="${c}"
+          style="width:26px;height:26px;border-radius:50%;background:${c};border:2px solid ${c === acc.color ? 'white':'transparent'};cursor:pointer;transition:transform .1s;"></button>`).join('')}
+      </div>
+      <div style="display:flex;gap:0.5rem;">
+        <button class="btn btn-primary btn-sm acc-ef-save" data-id="${acc.id}" style="flex:1;">Guardar</button>
+        <button class="btn btn-sm btn-outline acc-ef-cancel" style="flex:1;">Cancelar</button>
       </div>`;
-  }).join('');
-  $('accounts-list').querySelectorAll('.btn-del-acc').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (confirm('¿Eliminar esta cuenta?')) {
-        Accounts.remove(btn.dataset.id);
+
+    container.appendChild(row);
+    container.appendChild(editForm);
+
+    // Toggle edición
+    row.querySelector('.acc-edit-btn').addEventListener('click', () => {
+      editForm.classList.toggle('hidden');
+    });
+
+    // Eliminar
+    row.querySelector('.acc-del-btn').addEventListener('click', () => {
+      if (confirm(`¿Eliminar "${acc.name}"?`)) {
+        Accounts.remove(acc.id);
         renderAccountsList();
         renderAccountsCard();
         toast('Cuenta eliminada', '');
       }
+    });
+
+    // Color en form de edición
+    let editColor = acc.color;
+    editForm.querySelectorAll('.acc-ef-color').forEach(btn => {
+      btn.addEventListener('click', () => {
+        editColor = btn.dataset.color;
+        editForm.querySelectorAll('.acc-ef-color').forEach(b =>
+          b.style.borderColor = b.dataset.color === editColor ? 'white' : 'transparent'
+        );
+      });
+    });
+
+    // Guardar edición
+    editForm.querySelector('.acc-ef-save').addEventListener('click', () => {
+      const newName    = editForm.querySelector('.acc-ef-name').value.trim();
+      const newIcon    = editForm.querySelector('.acc-ef-icon').value.trim() || '💼';
+      const newBalance = parseFloat(editForm.querySelector('.acc-ef-balance').value) || 0;
+      if (!newName) return;
+      Accounts.update(acc.id, { name: newName, icon: newIcon, color: editColor, initial_balance: newBalance });
+      renderAccountsList();
+      renderAccountsCard();
+      toast('Cuenta actualizada ✓', 'success');
+    });
+
+    // Cancelar edición
+    editForm.querySelector('.acc-ef-cancel').addEventListener('click', () => {
+      editForm.classList.add('hidden');
     });
   });
 }
@@ -1940,10 +2003,30 @@ async function init() {
     }
   });
 
+  // -- Menú "Más" (bottom nav) --
+  $('tab-more').addEventListener('click', () => openOverlay('overlay-more'));
+  $('btn-close-more').addEventListener('click', () => closeOverlay('overlay-more'));
+  document.querySelectorAll('.more-menu-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      closeOverlay('overlay-more');
+      navigate(btn.dataset.page);
+    });
+  });
+
+  // -- Filtro de categorías en Movimientos (collapsible) --
+  $('tx-cat-toggle').addEventListener('click', () => {
+    const filters = $('tx-cat-filters');
+    const btn     = $('tx-cat-toggle');
+    const arrow   = $('tx-cat-toggle-arrow');
+    const isHidden = filters.classList.toggle('hidden');
+    btn.classList.toggle('open', !isHidden);
+    if (arrow) arrow.textContent = isHidden ? '▼' : '▲';
+  });
+
   // -- Links con data-page --
   document.addEventListener('click', e => {
     const link = e.target.closest('[data-page]');
-    if (link && !link.classList.contains('tab') && !link.classList.contains('nav-link')) {
+    if (link && !link.classList.contains('tab') && !link.classList.contains('nav-link') && !link.classList.contains('more-menu-item')) {
       e.preventDefault();
       navigate(link.dataset.page);
     }
