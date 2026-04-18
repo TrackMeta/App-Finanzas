@@ -17,6 +17,7 @@ const State = {
   selectedGoalId: null,
   selectedGoalName: '',
   selectedDebtId: null,
+  selectedDebtName: '',
   calMonth: new Date().toISOString().slice(0,7),
   simCategoryId: '',
   charts: {},
@@ -26,8 +27,6 @@ const State = {
   txDateFrom: '',
   txDateTo: '',
   quickAddAccountId: '',
-  selectedDebtId: null,
-  selectedDebtName: '',
 };
 
 // ---- UTILS ----
@@ -543,11 +542,12 @@ function checkRecurringSuggestion(currentTxs) {
 }
 
 function renderTransactionsPage(txs) {
-  // Filtros de categoría
+  // Filtros de categoría — se reconstruyen si el nº de categorías cambió
   const cats = Categories.getAll();
   const catFilter = $('tx-cat-filters');
-  if (catFilter && !catFilter.dataset.built) {
-    catFilter.dataset.built = '1';
+  const builtCount = parseInt(catFilter.dataset.built || '0', 10);
+  if (catFilter && builtCount !== cats.length) {
+    catFilter.dataset.built = String(cats.length);
     catFilter.innerHTML = `<button class="filter-btn active" data-catid="">Todas</button>` +
       cats.map(c => `<button class="filter-btn" data-catid="${c.id}">${c.icon} ${c.name}</button>`).join('');
     catFilter.querySelectorAll('.filter-btn').forEach(btn => {
@@ -559,6 +559,10 @@ function renderTransactionsPage(txs) {
       });
     });
   }
+  // Restaurar el botón activo según el filtro actual
+  catFilter.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.catid === State.txCatFilter);
+  });
 
   const filtered = txs.filter(t => {
     if (State.txFilterType === 'recurring') return t.is_recurring;
@@ -2175,10 +2179,16 @@ async function init() {
   });
 
   $('btn-new-goal').addEventListener('click', () => {
-    $('goal-edit-id').value = '';
+    $('goal-edit-id').value  = '';
     $('goal-modal-title').textContent = 'Nueva meta de ahorro';
-    $('btn-goal-submit').textContent = 'Crear meta';
-    goalSelectedIcon = '🎯'; goalSelectedColor = '#10B981';
+    $('btn-goal-submit').textContent  = 'Crear meta';
+    goalSelectedIcon  = '🎯';
+    goalSelectedColor = '#10B981';
+    // Limpiar todos los campos del formulario
+    $('goal-name').value     = '';
+    $('goal-target').value   = '';
+    $('goal-current').value  = '0';
+    $('goal-deadline').value = '';
     initGoalForm();
     openOverlay('overlay-goal');
   });
