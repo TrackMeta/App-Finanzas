@@ -6,6 +6,10 @@
 const State = {
   user: null,
   categories: [],
+  accounts: [],
+  allTransactions: [],  // Todas las txs sin filtro de fecha (para calcular saldos)
+  goals: [],
+  debts: [],
   currentMonth: new Date().toISOString().slice(0,7),
   transactions: [],
   quickAddType: 'expense',
@@ -196,10 +200,18 @@ function navigate(page) {
 }
 
 // ---- SHOW APP ----
-function showApp() {
+async function showApp() {
   // Cargar moneda desde el perfil antes de renderizar nada
-  const profile = Profiles.get();
-  if (profile.currency) setCurrency(profile.currency);
+  const profile = await Profiles.get();
+  if (profile?.currency) setCurrency(profile.currency);
+
+  // Precargar cuentas y todas las transacciones (necesarios para saldos)
+  const [accounts, allTxs] = await Promise.all([
+    Accounts.getAll(),
+    Transactions.getAll(),
+  ]);
+  State.accounts        = accounts;
+  State.allTransactions = allTxs;
 
   $('screen-app').classList.remove('hidden');
   $('screen-app').classList.add('active');
@@ -223,12 +235,13 @@ function showApp() {
 function showLogin() { showAuthScreen(); }
 
 // ---- ONBOARDING ----
-function showOnboarding() {
+async function showOnboarding() {
   const screen = $('screen-onboarding');
   screen.classList.remove('hidden');
 
   // Renderizar inputs de saldos de cuentas
-  const accounts = Accounts.getAll();
+  const accounts = await Accounts.getAll();
+  State.accounts = accounts;
   $('ob-accounts-inputs').innerHTML = accounts.map(acc => `
     <div class="ob-account-row">
       <div class="ob-account-icon" style="background:${acc.color}20;">${acc.icon}</div>
@@ -265,10 +278,10 @@ function showOnboarding() {
   }
 
   // Botón paso 0 → 1
-  $('ob-next-0').addEventListener('click', () => {
+  $('ob-next-0').addEventListener('click', async () => {
     const name = $('ob-name').value.trim();
     if (!name) { $('ob-name').focus(); toast('Ingresa tu nombre', 'error'); return; }
-    Profiles.update(null, { name });
+    await Profiles.update(null, { name });
     $('ob-ready-title').textContent = `¡Estás listo, ${name}! 🎉`;
     goToStep(1);
   });
@@ -279,11 +292,11 @@ function showOnboarding() {
   });
 
   // Botón paso 1 → 2 (guardar saldos)
-  function saveBalancesAndContinue() {
-    document.querySelectorAll('.ob-acc-input').forEach(input => {
+  async function saveBalancesAndContinue() {
+    await Promise.all([...document.querySelectorAll('.ob-acc-input')].map(input => {
       const balance = parseFloat(input.value) || 0;
-      Accounts.update(input.dataset.accid, { initial_balance: balance });
-    });
+      return Accounts.update(input.dataset.accid, { initial_balance: balance });
+    }));
     goToStep(2);
   }
   $('ob-next-1').addEventListener('click', saveBalancesAndContinue);
@@ -317,7 +330,7 @@ async function loadDashboard() {
 
   // Delta vs periodo anterior
   const prevRange = getPrevPeriodRange(from, to);
-  const prevTxs = Transactions.getByDateRange(prevRange.from, prevRange.to);
+  const prevTxs = await Transactions.getByDateRange(prevRange.from, prevRange.to);
   const prevExp = prevTxs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
   if (prevExp > 0) {
     const delta = ((expenses - prevExp) / prevExp) * 100;
@@ -335,11 +348,15 @@ async function loadDashboard() {
 
   // Insights (incluye alertas de presupuesto)
   const budgetMonth = from.slice(0,7);
-  const budgets = Budgets.getAll(budgetMonth);
+  const [budgets, allDebts] = await Promise.all([
+    Budgets.getAll(budgetMonth),
+    Debts.getAll(),
+  ]);
+  State.debts = allDebts;
   const insights = generateInsights(txs, prevTxs, cats, budgets);
 
   // Alertas de deudas próximas o vencidas
-  const debtAlerts = Debts.getAll()
+  const debtAlerts = allDebts
     .filter(d => d.total > (d.paid || 0) && d.next_payment_date)
     .map(d => {
       const days = Math.ceil((new Date(d.next_payment_date) - new Date()) / 86400000);
@@ -360,6 +377,10 @@ async function loadDashboard() {
 
   // Cuentas en dashboard
   renderAccountsCard();
+
+  // Actualizar State.accounts y allTransactions para saldos
+  State.accounts = await Accounts.getAll();
+  State.allTransactions = await Transactions.getAll();
 
   // Presupuestos en dashboard
   const cardBudgetsDash = $('card-budgets-dash');
@@ -488,7 +509,7 @@ function renderTxList(container, txs, showDate = false) {
 // ---- TX ITEM HTML (reutilizable) ----
 function txItemHTML(tx, showDate = false) {
   if (tx.type === 'transfer') {
-    const accounts = Accounts.getAll();
+    const accounts = State.accounts;
     const from = accounts.find(a => a.id === tx.from_account);
     const to   = accounts.find(a => a.id === tx.to_account);
     const meta = [showDate ? fmtDate(tx.date) : '', tx.note].filter(Boolean).join(' · ');
@@ -507,7 +528,7 @@ function txItemHTML(tx, showDate = false) {
   }
   const color     = tx.category?.color ?? '#6B7280';
   const recurring = tx.is_recurring ? '🔁 ' : '';
-  const accounts  = Accounts.getAll();
+  const accounts  = State.accounts;
   const account   = tx.account_id ? accounts.find(a => a.id === tx.account_id) : null;
   const accLabel  = account ? `${account.icon} ${account.name}` : '';
   const meta      = [showDate ? fmtDate(tx.date) : '', tx.note, accLabel].filter(Boolean).join(' · ');
@@ -531,8 +552,8 @@ let _editTxId = null;
 let _editTxRecurring = false;
 
 function openEditTx(id) {
-  const all = lsGet('cf_transactions', []);
-  const tx  = all.find(t => t.id === id);
+  // Buscar en las transacciones cargadas en State
+  const tx = State.transactions.find(t => t.id === id);
   if (!tx) return;
   _editTxId = id;
   _editTxRecurring = tx.is_recurring || false;
@@ -551,13 +572,13 @@ function openEditTx(id) {
   const recBtn = $('edit-tx-recurring');
   recBtn.classList.toggle('active', _editTxRecurring);
 
-  // Categorías
-  const cats = Categories.getAll();
+  // Categorías (usar State)
+  const cats = State.categories;
   $('edit-tx-category').innerHTML = `<option value="">Sin categoría</option>` +
     cats.map(c => `<option value="${c.id}" ${c.id===tx.category_id?'selected':''}>${c.icon} ${c.name}</option>`).join('');
 
-  // Cuenta
-  const accs = Accounts.getAll();
+  // Cuenta (usar State)
+  const accs = State.accounts;
   $('edit-tx-account').innerHTML = `<option value="">— Sin cuenta —</option>` +
     accs.map(a => `<option value="${a.id}" ${a.id===tx.account_id?'selected':''}>${a.icon} ${a.name}</option>`).join('');
 
@@ -569,19 +590,23 @@ async function saveEditTx() {
   const amount = parseFloat($('edit-tx-amount').value);
   if (!amount || amount <= 0) { toast('Monto inválido', 'error'); return; }
   const type = document.querySelector('[data-edit-type].active')?.dataset.editType || 'expense';
-  Transactions.update(_editTxId, {
-    amount,
-    type,
-    category_id: $('edit-tx-category').value || null,
-    account_id:  $('edit-tx-account').value  || null,
-    date:        $('edit-tx-date').value,
-    note:        $('edit-tx-note').value || null,
-    is_recurring: _editTxRecurring
-  });
-  toast('Movimiento actualizado ✓', 'success');
-  closeOverlay('overlay-edit-tx');
-  loadDashboard();
-  if ($('page-transactions').classList.contains('active')) loadTransactions();
+  try {
+    await Transactions.update(_editTxId, {
+      amount,
+      type,
+      category_id: $('edit-tx-category').value || null,
+      account_id:  $('edit-tx-account').value  || null,
+      date:        $('edit-tx-date').value,
+      note:        $('edit-tx-note').value || null,
+      is_recurring: _editTxRecurring
+    });
+    // Refrescar allTransactions para saldos correctos
+    State.allTransactions = await Transactions.getAll();
+    toast('Movimiento actualizado ✓', 'success');
+    closeOverlay('overlay-edit-tx');
+    loadDashboard();
+    if ($('page-transactions').classList.contains('active')) loadTransactions();
+  } catch { toast('Error al actualizar', 'error'); }
 }
 
 async function deleteTx(id) {
@@ -610,7 +635,7 @@ function renderInsights(container, insights) {
 // ---- TRANSACTIONS PAGE ----
 async function loadTransactions() {
   const { from, to } = getActiveDateRange();
-  const txs = Transactions.getByDateRange(from, to);
+  const txs = await Transactions.getByDateRange(from, to);
   State.transactions = txs;
   renderTransactionsPage(txs);
 
@@ -665,7 +690,7 @@ function checkRecurringSuggestion(currentTxs) {
 
 function renderTransactionsPage(txs) {
   // Filtros de categoría — se reconstruyen si el nº de categorías cambió
-  const cats = Categories.getAll();
+  const cats = State.categories;
   const catFilter = $('tx-cat-filters');
   const builtCount = parseInt(catFilter.dataset.built || '0', 10);
   if (catFilter && builtCount !== cats.length) {
@@ -770,6 +795,7 @@ function calcGoalProjection(goal) {
 
 async function loadGoals() {
   const goals = await Goals.getAll();
+  State.goals = goals;
   const total = goals.reduce((s,g)=>s+g.current_amount,0);
   const target = goals.reduce((s,g)=>s+g.target_amount,0);
   $('goals-summary').textContent = goals.length ? `${fmt(total)} de ${fmt(target)} ahorrados` : '';
@@ -928,16 +954,19 @@ async function deleteDebt(id) {
 }
 
 // ---- ACCOUNTS PAGE ----
-function loadAccountsPage() {
-  const accounts = Accounts.getAll();
-  const cats     = lsGet('cf_categories', []);
-
-  // Filtrar por rango de fechas activo (para el historial de movimientos)
+async function loadAccountsPage() {
+  // Cargar cuentas, transacciones del período y todas las transacciones (para saldos)
   const { from, to } = getActiveDateRange();
-  const allTxs = lsGet('cf_transactions', []).filter(t => t.date >= from && t.date <= to);
+  const [accounts, periodTxsRaw, allTxs] = await Promise.all([
+    Accounts.getAll(),
+    Transactions.getByDateRange(from, to),
+    Transactions.getAll(),
+  ]);
+  State.accounts        = accounts;
+  State.allTransactions = allTxs;
 
   // Total entre todas las cuentas
-  const totalBal = accounts.reduce((s, a) => s + Accounts.getBalance(a.id), 0);
+  const totalBal = accounts.reduce((s, a) => s + Accounts.getBalance(a.id, allTxs, accounts), 0);
   $('accounts-total-label').textContent = `Saldo total: ${fmt(totalBal)}`;
 
   const container = $('accounts-page-list');
@@ -949,14 +978,13 @@ function loadAccountsPage() {
   const periodLabel = getDateRangeLabel();
 
   container.innerHTML = accounts.map(acc => {
-    // Saldo real total (siempre, sin filtro de fecha = dinero real disponible)
-    const bal = Accounts.getBalance(acc.id);
+    // Saldo real total (usando allTxs sin filtro de fecha)
+    const bal = Accounts.getBalance(acc.id, allTxs, accounts);
 
-    // Movimientos del período filtrado para esta cuenta
-    const periodTxs = allTxs
+    // Movimientos del período: periodTxsRaw ya tiene join de categorías
+    const periodTxs = periodTxsRaw
       .filter(t => t.account_id === acc.id || t.from_account === acc.id || t.to_account === acc.id)
-      .sort((a,b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at))
-      .map(t => ({ ...t, category: cats.find(c => c.id === t.category_id) ?? null }));
+      .sort((a,b) => b.date.localeCompare(a.date));
 
     // Resumen del período
     const periodIncome  = periodTxs.filter(t=>t.account_id===acc.id && t.type==='income').reduce((s,t)=>s+t.amount,0);
@@ -1023,18 +1051,21 @@ function openEditAccountPage(id) {
   }, 100);
 }
 
-function deleteAccountPage(id) {
+async function deleteAccountPage(id) {
   if (!confirm('¿Eliminar esta cuenta? Las transacciones vinculadas no se eliminarán.')) return;
-  Accounts.remove(id);
-  toast('Cuenta eliminada', 'success');
-  loadAccountsPage();
+  try {
+    await Accounts.remove(id);
+    State.accounts = State.accounts.filter(a => a.id !== id);
+    toast('Cuenta eliminada', 'success');
+    loadAccountsPage();
+  } catch { toast('Error al eliminar cuenta', 'error'); }
 }
 
 function filterTxByAccount(accId) {
   // Navegar a movimientos y poner filtro de la cuenta en el buscador
   navigate('transactions');
   setTimeout(() => {
-    const acc = Accounts.getAll().find(a => a.id === accId);
+    const acc = State.accounts.find(a => a.id === accId);
     if (acc) {
       State.txSearch = acc.name;
       $('tx-search').value = acc.name;
@@ -1196,7 +1227,7 @@ async function loadCategories() {
 
   // Presupuestos — siempre por mes actual (o mes del período si filter=month)
   const budgetMonth = State.dateFilter === 'month' ? State.currentMonth : new Date().toISOString().slice(0,7);
-  const budgets     = Budgets.getAll(budgetMonth);
+  const budgets     = await Budgets.getAll(budgetMonth);
   renderBudgetsList(txs, cats, budgets);
 
   // Categorías
@@ -1528,10 +1559,10 @@ function exportCSV() {
 
 // ---- ACCOUNTS ----
 function renderAccountsCard() {
-  const accounts = Accounts.getAll();
+  const accounts = State.accounts;
   const container = $('dash-accounts-list');
   container.innerHTML = accounts.map(acc => {
-    const bal = Accounts.getBalance(acc.id);
+    const bal = Accounts.getBalance(acc.id, State.allTransactions, State.accounts);
     return `
       <div style="flex-shrink:0;background:${acc.color}18;border:1px solid ${acc.color}40;border-radius:14px;padding:0.75rem 1rem;min-width:110px;text-align:center;">
         <div style="font-size:1.5rem;">${acc.icon}</div>
@@ -1558,20 +1589,23 @@ function openAccountsModal() {
       );
     });
   });
-  $('form-account').onsubmit = e => {
+  $('form-account').onsubmit = async e => {
     e.preventDefault();
     const name = $('acc-name').value.trim();
     if (!name) return;
-    Accounts.add({
-      name,
-      icon:            $('acc-icon').value.trim() || '💼',
-      color:           selColor,
-      initial_balance: parseFloat($('acc-balance').value) || 0
-    });
-    $('form-account').reset();
-    renderAccountsList();
-    renderAccountsCard();
-    toast('Cuenta agregada ✓', 'success');
+    try {
+      const newAcc = await Accounts.add({
+        name,
+        icon:            $('acc-icon').value.trim() || '💼',
+        color:           selColor,
+        initial_balance: parseFloat($('acc-balance').value) || 0
+      });
+      State.accounts = await Accounts.getAll();
+      $('form-account').reset();
+      renderAccountsList();
+      renderAccountsCard();
+      toast('Cuenta agregada ✓', 'success');
+    } catch { toast('Error al crear cuenta', 'error'); }
   };
   openOverlay('overlay-accounts');
 }
@@ -1579,12 +1613,12 @@ function openAccountsModal() {
 const ACC_COLORS = ['#10B981','#3B82F6','#8B5CF6','#F59E0B','#EC4899','#06B6D4','#EF4444','#F97316'];
 
 function renderAccountsList() {
-  const accs = Accounts.getAll();
+  const accs = State.accounts;
   const container = $('accounts-list');
   container.innerHTML = '';
 
   accs.forEach(acc => {
-    const bal = Accounts.getBalance(acc.id);
+    const bal = Accounts.getBalance(acc.id, State.allTransactions, State.accounts);
 
     // Fila principal
     const row = document.createElement('div');
@@ -1629,12 +1663,15 @@ function renderAccountsList() {
     });
 
     // Eliminar
-    row.querySelector('.acc-del-btn').addEventListener('click', () => {
+    row.querySelector('.acc-del-btn').addEventListener('click', async () => {
       if (confirm(`¿Eliminar "${acc.name}"?`)) {
-        Accounts.remove(acc.id);
-        renderAccountsList();
-        renderAccountsCard();
-        toast('Cuenta eliminada', '');
+        try {
+          await Accounts.remove(acc.id);
+          State.accounts = await Accounts.getAll();
+          renderAccountsList();
+          renderAccountsCard();
+          toast('Cuenta eliminada', '');
+        } catch { toast('Error al eliminar', 'error'); }
       }
     });
 
@@ -1650,15 +1687,19 @@ function renderAccountsList() {
     });
 
     // Guardar edición
-    editForm.querySelector('.acc-ef-save').addEventListener('click', () => {
+    editForm.querySelector('.acc-ef-save').addEventListener('click', async () => {
       const newName    = editForm.querySelector('.acc-ef-name').value.trim();
       const newIcon    = editForm.querySelector('.acc-ef-icon').value.trim() || '💼';
       const newBalance = parseFloat(editForm.querySelector('.acc-ef-balance').value) || 0;
       if (!newName) return;
-      Accounts.update(acc.id, { name: newName, icon: newIcon, color: editColor, initial_balance: newBalance });
-      renderAccountsList();
-      renderAccountsCard();
-      toast('Cuenta actualizada ✓', 'success');
+      try {
+        await Accounts.update(acc.id, { name: newName, icon: newIcon, color: editColor, initial_balance: newBalance });
+        State.accounts = await Accounts.getAll();
+        State.allTransactions = await Transactions.getAll();
+        renderAccountsList();
+        renderAccountsCard();
+        toast('Cuenta actualizada ✓', 'success');
+      } catch { toast('Error al actualizar', 'error'); }
     });
 
     // Cancelar edición
@@ -2047,7 +2088,7 @@ async function loadProfile() {
 const CAT_COLORS = ['#F59E0B','#3B82F6','#8B5CF6','#EF4444','#EC4899','#06B6D4','#10B981','#F97316','#84CC16','#6B7280'];
 
 function renderCategoriesList() {
-  const cats      = Categories.getAll();
+  const cats      = State.categories;
   const container = $('categories-list');
   if (!container) return;
 
@@ -2085,14 +2126,17 @@ function renderCategoriesList() {
   });
 
   container.querySelectorAll('.btn-del-cat').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const cat = cats.find(c => c.id === btn.dataset.id);
       if (!cat) return;
       const msg = `¿Eliminar la categoría "${cat.name}"?\nLos movimientos que la usan quedarán sin categoría.`;
       if (confirm(msg)) {
-        Categories.remove(btn.dataset.id);
-        renderCategoriesList();
-        toast('Categoría eliminada', '');
+        try {
+          await Categories.remove(btn.dataset.id);
+          State.categories = await Categories.getAll();
+          renderCategoriesList();
+          toast('Categoría eliminada', '');
+        } catch { toast('Error al eliminar', 'error'); }
       }
     });
   });
@@ -2129,25 +2173,26 @@ function openCategoryModal(editCat = null) {
     });
   });
 
-  $('form-category').onsubmit = (e) => {
+  $('form-category').onsubmit = async (e) => {
     e.preventDefault();
     const name = $('cat-name').value.trim();
     const icon = $('cat-icon').value.trim() || '🏷️';
     const type = $('cat-type').value;
     if (!name) return;
 
-    if (isEdit) {
-      Categories.update($('cat-edit-id').value, { name, icon, color: selectedColor, type });
-      toast('Categoría actualizada ✓', 'success');
-    } else {
-      const all = lsGet(uk('cf_categories'), DEFAULT_CATS);
-      all.push({ id: uid(), name, icon, color: selectedColor, type });
-      lsSet(uk('cf_categories'), all);
-      toast('Categoría creada ✓', 'success');
-    }
-    closeOverlay('overlay-category');
-    renderCategoriesList();
-    $('form-category').reset();
+    try {
+      if (isEdit) {
+        await Categories.update($('cat-edit-id').value, { name, icon, color: selectedColor, type });
+        toast('Categoría actualizada ✓', 'success');
+      } else {
+        await Categories.add({ name, icon, color: selectedColor, type });
+        toast('Categoría creada ✓', 'success');
+      }
+      State.categories = await Categories.getAll();
+      closeOverlay('overlay-category');
+      renderCategoriesList();
+      $('form-category').reset();
+    } catch { toast('Error al guardar categoría', 'error'); }
   };
 
   openOverlay('overlay-category');
@@ -2432,7 +2477,10 @@ function setupAuthForms() {
     $('register-error').classList.add('hidden');
     try {
       if ($('reg-password').value !== $('reg-confirm').value) throw new Error('Las contraseñas no coinciden');
-      await AuthService.register($('reg-name').value, $('reg-email').value, $('reg-password').value);
+      // El nombre real lo pedirá el onboarding; usamos el prefijo del email como placeholder
+      const emailVal   = $('reg-email').value;
+      const nameFallback = emailVal.split('@')[0] || 'Usuario';
+      await AuthService.register(nameFallback, emailVal, $('reg-password').value);
       State.user = Auth.getUser();
       continueInit();
     } catch (err) {

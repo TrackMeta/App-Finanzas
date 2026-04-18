@@ -2,6 +2,11 @@
 // CONFIGURACIÓN
 // =============================================
 
+// ── Supabase ──────────────────────────────────
+// Reemplaza con tus valores en: supabase.com → Project Settings → API
+const SUPABASE_URL      = 'https://TU_PROYECTO.supabase.co';
+const SUPABASE_ANON_KEY = 'TU_ANON_KEY_AQUI';
+
 // Monedas disponibles
 const CURRENCIES = {
   'PEN': { symbol: 'S/',  locale: 'es-PE', name: 'Sol peruano (S/)' },

@@ -1,98 +1,73 @@
 // =============================================
-// AUTH – registro, login y sesión local
+// AUTH – Supabase Authentication
 // =============================================
 
-async function _hashPwd(password) {
-  const data = new TextEncoder().encode(password + 'cf_salt_v1');
-  const buf  = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
+// Cliente Supabase (usa variables de config.js)
+const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Cache síncrono del usuario actual (se hidrata en init)
+let _cachedUser = null;
 
 const AuthService = {
-  // ---------- Almacenamiento ----------
-  _getUsers()         { try { return JSON.parse(localStorage.getItem('cf_users') || '[]'); } catch { return []; } },
-  _saveUsers(users)   { localStorage.setItem('cf_users', JSON.stringify(users)); },
-  _setSession(s)      { localStorage.setItem('cf_session', JSON.stringify(s)); },
-  _clearSession()     { localStorage.removeItem('cf_session'); },
+  // ── Acceso síncrono al user en caché ──────
+  getCachedUser()    { return _cachedUser; },
+  getCurrentUserId() { return _cachedUser?.id || null; },
+  isLoggedIn()       { return !!_cachedUser; },
 
-  // ---------- Sesión ----------
-  getSession() {
-    try { const s = localStorage.getItem('cf_session'); return s ? JSON.parse(s) : null; }
-    catch { return null; }
+  // ── Sesión ────────────────────────────────
+  async loadSession() {
+    const { data: { session } } = await _sb.auth.getSession();
+    _cachedUser = session?.user ?? null;
+    return _cachedUser;
   },
-  isLoggedIn() { return !!this.getSession(); },
 
-  // ---------- Registro ----------
-  async register(name, email, password) {
-    if (!name.trim())          throw new Error('Ingresa tu nombre');
+  getSession() { return _cachedUser; },
+
+  // ── Registro ──────────────────────────────
+  async register(email, password) {
     if (!email.includes('@'))  throw new Error('Correo inválido');
     if (password.length < 6)   throw new Error('La contraseña debe tener al menos 6 caracteres');
 
-    const users    = this._getUsers();
-    const emailKey = email.toLowerCase().trim();
-    if (users.find(u => u.email === emailKey)) throw new Error('Ya existe una cuenta con este correo');
+    const { data, error } = await _sb.auth.signUp({ email, password });
 
-    const hash = await _hashPwd(password);
-    const user = {
-      id:           (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)),
-      name:         name.trim(),
-      email:        emailKey,
-      passwordHash: hash,
-      createdAt:    new Date().toISOString(),
-    };
-    users.push(user);
-    this._saveUsers(users);
+    if (error) {
+      if (error.message.includes('already registered')) throw new Error('Ya existe una cuenta con ese correo');
+      throw new Error(error.message);
+    }
+    if (!data.user) throw new Error('Error al crear la cuenta. Intenta de nuevo.');
 
-    const session = { id: user.id, name: user.name, email: user.email };
-    this._setSession(session);
-    return session;
+    _cachedUser = data.user;
+    return data.user;
   },
 
-  // ---------- Login ----------
+  // ── Login ─────────────────────────────────
   async login(email, password) {
-    const users    = this._getUsers();
-    const emailKey = email.toLowerCase().trim();
-    const user     = users.find(u => u.email === emailKey);
-    if (!user) throw new Error('No encontramos una cuenta con ese correo');
-    const hash = await _hashPwd(password);
-    if (hash !== user.passwordHash) throw new Error('Contraseña incorrecta');
-
-    const session = { id: user.id, name: user.name, email: user.email };
-    this._setSession(session);
-    return session;
+    const { data, error } = await _sb.auth.signInWithPassword({ email, password });
+    if (error) {
+      if (error.message.includes('Invalid login')) throw new Error('Correo o contraseña incorrectos');
+      throw new Error(error.message);
+    }
+    _cachedUser = data.user;
+    return data.user;
   },
 
-  // ---------- Logout ----------
-  logout() { this._clearSession(); },
-
-  // ---------- Cambiar contraseña ----------
-  async changePassword(currentPwd, newPwd) {
-    const session = this.getSession();
-    if (!session) throw new Error('No hay sesión activa');
-    if (newPwd.length < 6) throw new Error('La contraseña debe tener al menos 6 caracteres');
-
-    const users = this._getUsers();
-    const idx   = users.findIndex(u => u.id === session.id);
-    if (idx < 0) throw new Error('Usuario no encontrado');
-
-    const currentHash = await _hashPwd(currentPwd);
-    if (currentHash !== users[idx].passwordHash) throw new Error('Contraseña actual incorrecta');
-
-    users[idx].passwordHash = await _hashPwd(newPwd);
-    this._saveUsers(users);
+  // ── Logout ────────────────────────────────
+  async logout() {
+    await _sb.auth.signOut();
+    _cachedUser = null;
   },
 
-  // ---------- Actualizar nombre ----------
-  updateName(newName) {
-    const session = this.getSession();
-    if (!session) return;
-    const users = this._getUsers();
-    const idx   = users.findIndex(u => u.id === session.id);
-    if (idx >= 0) { users[idx].name = newName; this._saveUsers(users); }
-    session.name = newName;
-    this._setSession(session);
+  // ── Escuchar cambios de sesión ────────────
+  onAuthStateChange(cb) {
+    _sb.auth.onAuthStateChange((_event, session) => {
+      _cachedUser = session?.user ?? null;
+      cb(session?.user ?? null);
+    });
   },
 
-  // ---------- Lista de usuarios (para admin/debug) ----------
-  listUsers() { return this._getUsers().map(({ passwordHash, ...u }) => u); },
+  // ── Cambiar contraseña ────────────────────
+  async changePassword(newPassword) {
+    const { error } = await _sb.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+  },
 };

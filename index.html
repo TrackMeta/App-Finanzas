@@ -22,6 +22,8 @@
 
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -68,11 +70,6 @@
     <!-- Formulario REGISTRO -->
     <form id="form-register" class="auth-form hidden" autocomplete="on">
       <div id="register-error" class="auth-error hidden"></div>
-      <div class="input-group">
-        <label class="input-label">Nombre</label>
-        <input id="reg-name" type="text" class="input" placeholder="¿Cómo te llamamos?"
-          autocomplete="name" required maxlength="30" />
-      </div>
       <div class="input-group">
         <label class="input-label">Correo electrónico</label>
         <input id="reg-email" type="email" class="input" placeholder="correo@ejemplo.com"
