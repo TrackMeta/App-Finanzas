@@ -449,7 +449,15 @@
     <!-- PAGE: INSIGHTS -->
     <div id="page-insights" class="page hidden">
       <div class="page-inner">
-        <h1 class="page-title">Análisis financiero</h1>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem;">
+          <h1 class="page-title" style="margin:0;">Análisis financiero</h1>
+        </div>
+        <!-- Navegador de mes -->
+        <div class="month-nav" style="margin-bottom:0.75rem;">
+          <button id="insights-prev-month" class="btn-icon">‹</button>
+          <span id="insights-month-label" class="font-medium"></span>
+          <button id="insights-next-month" class="btn-icon">›</button>
+        </div>
 
         <!-- Score -->
         <div class="card">

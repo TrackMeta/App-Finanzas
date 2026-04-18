@@ -1030,29 +1030,31 @@ function openBudgetsModal(cats, budgets) {
 }
 
 async function loadInsights() {
+  $('insights-month-label').textContent = fmtMonth(State.currentMonth);
+
   const [txs, cats, prevTxs] = await Promise.all([
     Transactions.getByMonth(State.currentMonth),
     Categories.getAll(),
     Transactions.getByMonth(getPrevMonth(State.currentMonth))
   ]);
   State.transactions = txs;
-  State.categories = cats;
+  State.categories   = cats;
 
   // Presupuestos
   const budgets = Budgets.getAll(State.currentMonth);
   renderBudgetsList(txs, cats, budgets);
 
-  // Score
-  const streak = State.user ? Streaks.get(State.user.id) : null;
-  const score = calcScore(txs, Goals.getAll(), budgets, streak);
+  // Score (bug fix: Streaks.get() no recibe argumento)
+  const streak = Streaks.get();
+  const score  = calcScore(txs, Goals.getAll(), budgets, streak);
   renderScore(score);
 
   // Proyección
   const proj = projectEndOfMonth(txs);
-  $('proj-expenses').textContent = fmt(proj.projectedExpenses);
-  $('proj-savings').textContent = fmt(Math.abs(proj.projectedSavings)) + (proj.projectedSavings<0?' (déficit)':'');
-  $('proj-savings-card').className = 'stat-card ' + (proj.projectedSavings>=0?'savings':'expense');
-  $('proj-confidence').textContent = `Confianza: ${proj.confidence} (${new Date().getDate()} días de datos)`;
+  $('proj-expenses').textContent    = fmt(proj.projectedExpenses);
+  $('proj-savings').textContent     = fmt(Math.abs(proj.projectedSavings)) + (proj.projectedSavings < 0 ? ' (déficit)' : '');
+  $('proj-savings-card').className  = 'stat-card ' + (proj.projectedSavings >= 0 ? 'savings' : 'expense');
+  $('proj-confidence').textContent  = `Confianza: ${proj.confidence} (${new Date().getDate()} días de datos)`;
 
   // Gráfico semanal
   renderWeeklyChart(txs);
@@ -1060,8 +1062,8 @@ async function loadInsights() {
   // Simulador
   renderSimCategories(cats, txs);
 
-  // Insights
-  const insights = generateInsights(txs, prevTxs, cats);
+  // Insights — bug fix: se pasan los budgets para activar esas reglas
+  const insights = generateInsights(txs, prevTxs, cats, budgets);
   renderInsights($('all-insights'), insights);
 }
 
@@ -1099,29 +1101,44 @@ function renderWeeklyChart(txs) {
   const ctx = $('chart-weekly').getContext('2d');
   if (State.charts.weekly) State.charts.weekly.destroy();
 
+  // Agrupar por semana del mes (1–5)
   const weeks = {};
+  for (let w = 1; w <= 5; w++) weeks[w] = { income: 0, expenses: 0 };
   txs.forEach(t => {
-    const w = Math.ceil(new Date(t.date+'T00:00:00').getDate()/7);
-    weeks[w] = weeks[w]||{income:0,expenses:0};
-    if (t.type==='income') weeks[w].income+=t.amount;
-    if (t.type==='expense') weeks[w].expenses+=t.amount;
+    const w = Math.min(Math.ceil(new Date(t.date + 'T00:00:00').getDate() / 7), 5);
+    if (t.type === 'income')  weeks[w].income   += t.amount;
+    if (t.type === 'expense') weeks[w].expenses += t.amount;
   });
 
-  const labels = Object.keys(weeks).map(w=>`Sem ${w}`);
+  // Quitar semanas vacías al final
+  const usedWeeks = Object.entries(weeks).filter(([,v]) => v.income > 0 || v.expenses > 0);
+  if (!usedWeeks.length) {
+    $('chart-weekly').parentElement.innerHTML +=
+      '<p class="text-muted text-sm text-center" style="margin-top:-0.5rem;padding-bottom:0.5rem;">Sin datos este mes</p>';
+    return;
+  }
+
+  // Color del grid adaptado al tema
+  const isDark = document.documentElement.dataset.theme !== 'light';
+  const gridColor  = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const tickColor  = isDark ? '#71717a' : '#6B6B80';
+
+  const labels = usedWeeks.map(([w]) => `Sem ${w}`);
   State.charts.weekly = new Chart(ctx, {
     type: 'bar',
     data: {
       labels,
       datasets: [
-        {label:'Ingresos', data:Object.values(weeks).map(w=>w.income), backgroundColor:'rgba(16,185,129,0.7)', borderRadius:6},
-        {label:'Gastos', data:Object.values(weeks).map(w=>w.expenses), backgroundColor:'rgba(244,63,94,0.7)', borderRadius:6}
+        { label: 'Ingresos', data: usedWeeks.map(([,v]) => v.income),   backgroundColor: 'rgba(16,185,129,0.75)', borderRadius: 6 },
+        { label: 'Gastos',   data: usedWeeks.map(([,v]) => v.expenses), backgroundColor: 'rgba(244,63,94,0.75)',  borderRadius: 6 }
       ]
     },
     options: {
-      plugins: { legend: { labels: { color: '#71717a', font: {size:11} } } },
+      responsive: true,
+      plugins: { legend: { labels: { color: tickColor, font: { size: 11 } } } },
       scales: {
-        x: { ticks: { color:'#71717a' }, grid: { display:false } },
-        y: { ticks: { color:'#71717a', callback: v=>fmt(v,true) }, grid: { color:'rgba(255,255,255,0.05)' } }
+        x: { ticks: { color: tickColor }, grid: { display: false } },
+        y: { ticks: { color: tickColor, callback: v => fmt(v, true) }, grid: { color: gridColor } }
       }
     }
   });
@@ -1148,15 +1165,19 @@ function updateSimResult() {
   if (!State.simCategoryId) return;
   const pct = parseInt($('sim-slider').value);
   $('sim-label').textContent = `Reducir un ${pct}%`;
-  const sim = simulateSavings(State.transactions, State.simCategoryId, pct);
+  const sim    = simulateSavings(State.transactions, State.simCategoryId, pct);
   const result = $('sim-result');
-  if (sim.monthlySavings > 0) {
-    result.classList.remove('hidden');
+  result.classList.remove('hidden');
+  if (sim.currentMonthly <= 0) {
+    result.innerHTML = `<p class="sim-result-detail text-muted">Sin gastos en esta categoría este mes.</p>`;
+  } else if (sim.monthlySavings > 0) {
     result.innerHTML = `
-      <p class="sim-result-title">Ahorro mensual: ${fmt(sim.monthlySavings)}</p>
+      <p class="sim-result-title">Ahorro mensual: <strong style="color:var(--emerald)">${fmt(sim.monthlySavings)}</strong></p>
       <p class="sim-result-detail">Ahorro anual: <strong>${fmt(sim.yearlySavings)}</strong></p>
       <p class="sim-result-detail">Gasto actual: <s>${fmt(sim.currentMonthly)}</s> → ${fmt(sim.reducedMonthly)}</p>`;
-  } else result.classList.add('hidden');
+  } else {
+    result.innerHTML = `<p class="sim-result-detail text-muted">Ajusta el porcentaje para ver proyección.</p>`;
+  }
 }
 
 // ---- LOGROS ----
@@ -2362,6 +2383,20 @@ async function init() {
     const d = new Date(y,m-1,1); d.setMonth(d.getMonth()+1);
     const next = d.toISOString().slice(0,7);
     if (next <= new Date().toISOString().slice(0,7)) { State.currentMonth=next; loadTransactions(); }
+  });
+
+  // -- Insights month nav --
+  $('insights-prev-month').addEventListener('click', () => {
+    const [y,m] = State.currentMonth.split('-').map(Number);
+    const d = new Date(y,m-1,1); d.setMonth(d.getMonth()-1);
+    State.currentMonth = d.toISOString().slice(0,7);
+    loadInsights();
+  });
+  $('insights-next-month').addEventListener('click', () => {
+    const [y,m] = State.currentMonth.split('-').map(Number);
+    const d = new Date(y,m-1,1); d.setMonth(d.getMonth()+1);
+    const next = d.toISOString().slice(0,7);
+    if (next <= new Date().toISOString().slice(0,7)) { State.currentMonth = next; loadInsights(); }
   });
 
   // -- Calendar nav --
