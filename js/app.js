@@ -1273,27 +1273,23 @@ async function exportPDF() {
   const cats    = Categories.getAll();
   const budgets = Budgets.getAll(State.currentMonth);
   const profile = Profiles.get();
-
   const { income, expenses, savings } = calcMonthStats(txs);
   const monthLabel = fmtMonth(State.currentMonth);
 
-  // --- Resumen de presupuestos ---
+  // --- Presupuestos ---
   const budgetRows = budgets.map(b => {
-    const cat   = cats.find(c => c.id === b.category_id);
+    const cat  = cats.find(c => c.id === b.category_id);
     if (!cat) return '';
     const spent = txs.filter(t => t.type === 'expense' && t.category_id === b.category_id)
                      .reduce((s, t) => s + t.amount, 0);
     const pct   = Math.min((spent / b.monthly_limit) * 100, 100).toFixed(0);
     const over  = spent > b.monthly_limit;
     const color = over ? '#E11D48' : pct >= 80 ? '#D97706' : '#059669';
-    return `
-      <div class="pr-budget-row">
+    return `<div class="pr-budget-row">
         <span>${cat.icon} ${cat.name}</span>
         <span style="color:${color};font-weight:600;">${fmt(spent)} / ${fmt(b.monthly_limit)}</span>
       </div>
-      <div class="pr-budget-bar-bg">
-        <div class="pr-budget-bar" style="width:${pct}%;background:${color};"></div>
-      </div>`;
+      <div class="pr-budget-bar-bg"><div class="pr-budget-bar" style="width:${pct}%;background:${color};"></div></div>`;
   }).join('');
 
   // --- Top categorías ---
@@ -1304,94 +1300,83 @@ async function exportPDF() {
   const topCats = Object.entries(byCat).sort(([, a], [, b]) => b - a).slice(0, 8);
   const catRows = topCats.map(([id, amount]) => {
     const cat = cats.find(c => c.id === id);
-    return `<div class="pr-cat-row">
-      <span>${cat?.icon ?? ''} ${cat?.name ?? 'Otros'}</span>
-      <span style="color:#E11D48;font-weight:600;">-${fmt(amount)}</span>
-    </div>`;
+    return `<div class="pr-cat-row"><span>${cat?.icon ?? ''} ${cat?.name ?? 'Otros'}</span><span style="color:#E11D48;font-weight:600;">-${fmt(amount)}</span></div>`;
   }).join('');
 
-  // --- Transacciones agrupadas por fecha ---
+  // --- Transacciones ---
   const groups = {};
   txs.forEach(t => { groups[t.date] = groups[t.date] || []; groups[t.date].push(t); });
-  const txRows = Object.entries(groups)
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([date, items]) => {
-      const dLabel = new Date(date + 'T00:00:00')
-        .toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
-      const rows = items.map(t => {
-        const cat   = cats.find(c => c.id === t.category_id);
-        const sign  = t.type === 'expense' ? '-' : '+';
-        const color = t.type === 'expense' ? 'expense' : 'income';
-        return `<div class="pr-tx-row">
-          <span>${cat?.icon ?? ''} ${cat?.name ?? 'Sin categoría'}${t.note ? ` · ${t.note}` : ''}</span>
-          <span class="pr-tx-amount ${color}">${sign}${fmt(t.amount)}</span>
-        </div>`;
-      }).join('');
-      return `<div class="pr-tx-group">
-        <div class="pr-tx-date">${dLabel}</div>
-        ${rows}
-      </div>`;
+  const txRows = Object.entries(groups).sort(([a], [b]) => b.localeCompare(a)).map(([date, items]) => {
+    const dLabel = new Date(date + 'T00:00:00').toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
+    const rows = items.map(t => {
+      const cat  = cats.find(c => c.id === t.category_id);
+      const sign = t.type === 'expense' ? '-' : t.type === 'income' ? '+' : '↔';
+      const col  = t.type === 'expense' ? '#E11D48' : t.type === 'income' ? '#059669' : '#7C3AED';
+      return `<div class="pr-tx-row"><span>${cat?.icon ?? ''}${cat?.name ?? (t.type === 'transfer' ? 'Transferencia' : 'Sin categoría')}${t.note ? ` · ${t.note}` : ''}</span><span style="color:${col};font-weight:600;">${sign}${fmt(t.amount)}</span></div>`;
     }).join('');
+    return `<div class="pr-tx-group"><div class="pr-tx-date">${dLabel}</div>${rows}</div>`;
+  }).join('');
 
-  // --- Armar HTML del reporte ---
-  $('print-report').innerHTML = `
+  // --- Estilos del reporte (inline, sin dependencias externas) ---
+  const css = `
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111;background:#fff;padding:2rem;}
+    .pr-page{max-width:700px;margin:0 auto;}
+    .pr-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:1rem;border-bottom:3px solid #10B981;margin-bottom:1.5rem;}
+    .pr-logo{font-size:1.4rem;font-weight:800;color:#10B981;}
+    .pr-logo small{display:block;font-size:0.8rem;color:#777;font-weight:400;margin-top:2px;}
+    .pr-month{text-align:right;font-size:0.85rem;color:#555;line-height:1.6;}
+    .pr-section{margin-bottom:1.5rem;}
+    .pr-section-title{font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#999;margin-bottom:0.6rem;padding-bottom:0.3rem;border-bottom:1px solid #eee;}
+    .pr-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;}
+    .pr-stat{background:#f5f5f7;border-radius:10px;padding:0.75rem;}
+    .pr-stat-label{font-size:0.65rem;color:#888;margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;}
+    .pr-stat-value{font-size:1.15rem;font-weight:800;font-family:monospace;}
+    .pr-stat.income .pr-stat-value{color:#059669;}
+    .pr-stat.expense .pr-stat-value{color:#E11D48;}
+    .pr-stat.savings .pr-stat-value{color:#2563EB;}
+    .pr-budget-row{display:flex;justify-content:space-between;padding:0.35rem 0;font-size:0.85rem;border-bottom:1px solid #f0f0f0;}
+    .pr-budget-bar-bg{height:4px;background:#eee;border-radius:99px;margin-bottom:4px;}
+    .pr-budget-bar{height:4px;border-radius:99px;}
+    .pr-cat-row{display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.85rem;border-bottom:1px solid #f5f5f5;}
+    .pr-tx-group{margin-bottom:0.75rem;}
+    .pr-tx-date{font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#999;padding:0.4rem 0 0.2rem;}
+    .pr-tx-row{display:flex;justify-content:space-between;padding:0.22rem 0;font-size:0.82rem;border-bottom:1px solid #fafafa;}
+    .pr-footer{margin-top:2rem;padding-top:0.75rem;border-top:1px solid #ddd;font-size:0.65rem;color:#bbb;text-align:center;}
+    @media print{@page{margin:1.5cm;size:A4;}}
+  `;
+
+  // --- HTML del reporte ---
+  const html = `
     <div class="pr-page">
       <div class="pr-header">
-        <div>
-          <div class="pr-logo">💰 Coach Finanzas</div>
-          <div style="font-size:0.8rem;color:#555;margin-top:2px;">Resumen financiero mensual</div>
-        </div>
-        <div class="pr-month">
-          <strong>${profile.name || 'Usuario'}</strong><br>
-          ${monthLabel}<br>
-          <span style="color:#aaa;">Generado ${new Date().toLocaleDateString('es-PE')}</span>
-        </div>
+        <div><div class="pr-logo">💰 Coach Finanzas<small>Resumen financiero mensual</small></div></div>
+        <div class="pr-month"><strong>${profile.name || 'Usuario'}</strong><br>${monthLabel}<br><span style="color:#aaa;">Generado ${new Date().toLocaleDateString('es-PE')}</span></div>
       </div>
-
       <div class="pr-section">
         <div class="pr-section-title">Resumen del mes</div>
         <div class="pr-stats">
-          <div class="pr-stat income">
-            <div class="pr-stat-label">Ingresos</div>
-            <div class="pr-stat-value">${fmt(income)}</div>
-          </div>
-          <div class="pr-stat expense">
-            <div class="pr-stat-label">Gastos</div>
-            <div class="pr-stat-value">${fmt(expenses)}</div>
-          </div>
-          <div class="pr-stat savings">
-            <div class="pr-stat-label">${savings >= 0 ? 'Ahorro' : 'Déficit'}</div>
-            <div class="pr-stat-value">${fmt(Math.abs(savings))}</div>
-          </div>
+          <div class="pr-stat income"><div class="pr-stat-label">Ingresos</div><div class="pr-stat-value">${fmt(income)}</div></div>
+          <div class="pr-stat expense"><div class="pr-stat-label">Gastos</div><div class="pr-stat-value">${fmt(expenses)}</div></div>
+          <div class="pr-stat savings"><div class="pr-stat-label">${savings >= 0 ? 'Ahorro' : 'Déficit'}</div><div class="pr-stat-value">${fmt(Math.abs(savings))}</div></div>
         </div>
       </div>
-
-      ${budgetRows ? `
+      ${budgetRows ? `<div class="pr-section"><div class="pr-section-title">Presupuestos del mes</div>${budgetRows}</div>` : ''}
+      ${catRows    ? `<div class="pr-section"><div class="pr-section-title">Gastos por categoría</div>${catRows}</div>` : ''}
       <div class="pr-section">
-        <div class="pr-section-title">Presupuestos del mes</div>
-        ${budgetRows}
-      </div>` : ''}
-
-      ${catRows ? `
-      <div class="pr-section">
-        <div class="pr-section-title">Gastos por categoría</div>
-        ${catRows}
-      </div>` : ''}
-
-      <div class="pr-section">
-        <div class="pr-section-title">Detalle de movimientos (${txs.length})</div>
+        <div class="pr-section-title">Movimientos del mes (${txs.length})</div>
         ${txRows || '<p style="color:#aaa;font-size:0.85rem;">Sin movimientos este mes</p>'}
       </div>
-
-      <div class="pr-footer">
-        Coach Finanzas · Reporte generado automáticamente · ${new Date().toLocaleString('es-PE')}
-      </div>
+      <div class="pr-footer">Coach Finanzas · Generado el ${new Date().toLocaleString('es-PE')}</div>
     </div>`;
 
-  // Pequeña pausa para que el DOM se actualice, luego imprimir
-  setTimeout(() => {
-    window.print();
-  }, 150);
+  // Abrir ventana nueva — evita conflictos con el CSS de la app
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) { toast('Permitir ventanas emergentes para generar el PDF', 'error'); return; }
+  win.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Coach Finanzas – ${monthLabel}</title><style>${css}</style></head><body>${html}</body></html>`);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 400);
 }
 
 // ---- PROFILE PAGE ----
@@ -1520,8 +1505,9 @@ function openQuickAdd(type = 'expense') {
   $('quickadd-note').classList.add('hidden');
   $('btn-add-note').classList.remove('hidden');
   $('quickadd-note').value = '';
-  $('btn-toggle-recurring').style.color = 'var(--text-muted)';
-  $('btn-toggle-recurring').style.fontWeight = 'normal';
+  const recBtn = $('btn-toggle-recurring');
+  recBtn.classList.remove('active-recurring');
+  recBtn.textContent = '🔁 Fijo';
   $('quickadd-date').value = today();
 
   document.querySelectorAll('.type-pill').forEach(p=>p.classList.toggle('active', p.dataset.type===type));
@@ -1745,9 +1731,8 @@ async function init() {
 
       case 'btn-toggle-recurring': {
         State.quickAddRecurring = !State.quickAddRecurring;
-        t.style.color      = State.quickAddRecurring ? 'var(--emerald)' : 'var(--text-muted)';
-        t.style.fontWeight = State.quickAddRecurring ? '700' : 'normal';
-        t.textContent      = State.quickAddRecurring ? '🔁 Fijo ✓' : '🔁 Fijo';
+        t.classList.toggle('active-recurring', State.quickAddRecurring);
+        t.textContent = State.quickAddRecurring ? '🔁 Fijo ✓' : '🔁 Fijo';
         break;
       }
 
