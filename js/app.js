@@ -2651,7 +2651,7 @@ async function init() {
   });
 
   // -- Simulator --
-  $('sim-slider').addEventListener('input', updateSimResult);
+  $('sim-slider')?.addEventListener('input', updateSimResult);
 
   // -- Theme toggle --
   $('theme-toggle').addEventListener('click', () => {

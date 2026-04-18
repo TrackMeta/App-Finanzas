@@ -604,11 +604,11 @@
     <button id="fab" class="fab">
       <span class="fab-icon">+</span>
     </button>
-    <a href="#" class="tab" data-page="insights">
-      <span class="tab-icon">📈</span>
-      <span class="tab-label">Análisis</span>
+    <a href="#" class="tab" data-page="profile">
+      <span class="tab-icon">👤</span>
+      <span class="tab-label">Mi perfil</span>
     </a>
-    <button class="tab" id="tab-more">
+    <button class="tab" id="tab-more" onclick="openOverlay('overlay-more')">
       <span class="tab-icon">⋯</span>
       <span class="tab-label">Más</span>
     </button>
@@ -634,6 +634,10 @@
           <span class="more-menu-icon">💰</span>
           <span>Cuentas</span>
         </button>
+        <button class="more-menu-item" data-page="insights">
+          <span class="more-menu-icon">📈</span>
+          <span>Análisis</span>
+        </button>
         <button class="more-menu-item" data-page="calendar">
           <span class="more-menu-icon">📅</span>
           <span>Calendario</span>
@@ -641,10 +645,6 @@
         <button class="more-menu-item" data-page="reports">
           <span class="more-menu-icon">📊</span>
           <span>Reportes</span>
-        </button>
-        <button class="more-menu-item" data-page="profile">
-          <span class="more-menu-icon">👤</span>
-          <span>Perfil</span>
         </button>
       </div>
       <div style="padding:0.75rem 1rem 1.5rem;">

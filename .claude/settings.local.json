@@ -9,7 +9,8 @@
       "Bash(cmd /c \"node -v\")",
       "Bash(cmd /c \"npm -v\")",
       "Bash(rm -rf app components lib stores hooks types middleware.ts next.config.ts tailwind.config.ts postcss.config.mjs tsconfig.json package.json .gitignore SETUP.md public/manifest.json)",
-      "Bash(mkdir -p css js icons)"
+      "Bash(mkdir -p css js icons)",
+      "Bash(grep -v \"global-\\\\|cal-\\\\|//\\\\|^\\\\s*//\")"
     ]
   }
 }

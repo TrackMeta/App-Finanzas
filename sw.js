@@ -2,7 +2,7 @@
 // SERVICE WORKER – Coach Finanzas PWA
 // =============================================
 
-const CACHE_NAME = 'finanzas-v17';
+const CACHE_NAME = 'finanzas-v18';
 
 const ASSETS = [
   '/App-Finanzas/',
