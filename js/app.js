@@ -2173,6 +2173,19 @@ async function init() {
     e.target.value = '';
   });
 
+  // -- Importar CSV --
+  $('input-import-csv').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) importCSV(file);
+    e.target.value = '';
+  });
+
+  // -- Resumen fin de mes: ir a reportes --
+  $('ms-btn-reports').addEventListener('click', () => {
+    closeOverlay('overlay-month-summary');
+    navigate('reports');
+  });
+
   // -- Close modals --
   document.querySelectorAll('.close-modal').forEach(btn => {
     btn.addEventListener('click', () => closeOverlay('overlay-' + btn.dataset.modal));
@@ -2277,6 +2290,154 @@ async function init() {
       navigate(link.dataset.page);
     }
   });
+}
+
+// ---- CONFETTI ----
+function showConfetti() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9999;overflow:hidden;';
+  document.body.appendChild(overlay);
+  const colors = ['#10B981','#F59E0B','#EF4444','#8B5CF6','#3B82F6','#EC4899','#F97316'];
+  for (let i = 0; i < 70; i++) {
+    const el   = document.createElement('div');
+    const size = Math.random() * 10 + 6;
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const dur  = (Math.random() * 2 + 1.5).toFixed(2);
+    const delay = (Math.random() * 0.8).toFixed(2);
+    el.style.cssText = `
+      position:absolute; width:${size}px; height:${size}px;
+      background:${color}; border-radius:${Math.random()>.5?'50%':'3px'};
+      left:${Math.random()*100}%; top:-20px; opacity:1;
+      animation: confettiFall ${dur}s ${delay}s ease-in forwards;
+    `;
+    overlay.appendChild(el);
+  }
+  setTimeout(() => overlay.remove(), 4500);
+}
+
+// ---- IMPORTAR CSV ----
+function importCSV(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const lines = e.target.result.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) { toast('CSV vacío o sin datos', 'error'); return; }
+
+      const raw = lines[0].split(',').map(h => h.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''));
+      const idx = (names) => names.reduce((f, n) => f >= 0 ? f : raw.indexOf(n), -1);
+
+      const dateIdx   = idx(['fecha','date']);
+      const typeIdx   = idx(['tipo','type']);
+      const amountIdx = idx(['monto','amount','importe']);
+      const catIdx    = idx(['categoria','category','categoría']);
+      const noteIdx   = idx(['nota','note','descripcion','description']);
+
+      if (dateIdx < 0 || amountIdx < 0) {
+        toast('El CSV debe tener al menos columnas: Fecha y Monto', 'error'); return;
+      }
+
+      const cats = lsGet('cf_categories', []);
+      let imported = 0, skipped = 0;
+
+      lines.slice(1).forEach(line => {
+        const cols   = line.split(',');
+        const date   = cols[dateIdx]?.trim();
+        const amount = parseFloat(cols[amountIdx]?.replace(/[^0-9.-]/g,''));
+        if (!date || isNaN(amount) || amount <= 0) { skipped++; return; }
+
+        const rawType = typeIdx >= 0 ? cols[typeIdx]?.trim().toLowerCase() : '';
+        const type    = rawType.includes('ingreso') || rawType.includes('income') ? 'income' : 'expense';
+        const catName = catIdx >= 0 ? cols[catIdx]?.trim() : '';
+        const note    = noteIdx >= 0 ? (cols[noteIdx]?.trim().replace(/;/g,',') || null) : null;
+        const cat     = catName ? cats.find(c => c.name.toLowerCase() === catName.toLowerCase()) : null;
+
+        Transactions.add({ user_id:'local', type, amount, date, note, is_recurring:false, category_id: cat?.id || null });
+        imported++;
+      });
+
+      toast(`${imported} transacciones importadas${skipped ? `, ${skipped} omitidas` : ''} ✓`, 'success');
+      loadDashboard();
+      if ($('page-transactions').classList.contains('active')) loadTransactions();
+    } catch { toast('Error al procesar el CSV', 'error'); }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ---- RESUMEN FIN DE MES ----
+function checkMonthSummary() {
+  const currentMonth = new Date().toISOString().slice(0,7);
+  const lastSeen     = lsGet('cf_last_month', null);
+
+  // Si es la primera vez o el mismo mes, no mostrar
+  if (!lastSeen || lastSeen === currentMonth) {
+    lsSet('cf_last_month', currentMonth);
+    return;
+  }
+
+  // Mes anterior al actual (el que hay que resumir)
+  const [cy, cm] = currentMonth.split('-').map(Number);
+  const prevDate  = new Date(cy, cm-2, 1);
+  const prevMonth = prevDate.toISOString().slice(0,7);
+
+  if (lastSeen !== prevMonth && lastSeen < prevMonth) {
+    lsSet('cf_last_month', currentMonth);
+    return; // Más de un mes sin abrir — saltar
+  }
+
+  const txs      = lsGet('cf_transactions', []);
+  const prevTxs  = txs.filter(t => t.date.startsWith(prevMonth));
+  const income   = prevTxs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const expenses = prevTxs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const savings  = income - expenses;
+
+  const monthLabel = prevDate.toLocaleDateString('es-PE',{month:'long',year:'numeric'});
+  $('ms-title').textContent    = `Resumen: ${monthLabel}`;
+  $('ms-income').textContent   = fmt(income);
+  $('ms-expenses').textContent = fmt(expenses);
+  $('ms-savings').textContent  = fmt(Math.abs(savings));
+
+  const savingsCard = $('ms-savings-card');
+  if (savings >= 0) {
+    savingsCard.style.background = 'var(--emerald-dim)';
+    $('ms-savings-label').textContent = 'Ahorro';
+    $('ms-savings').style.color = 'var(--emerald)';
+  } else {
+    savingsCard.style.background = 'var(--rose-dim)';
+    $('ms-savings-label').textContent = 'Déficit';
+    $('ms-savings').style.color = 'var(--rose)';
+  }
+
+  // Top 3 categorías de gasto
+  const cats   = lsGet('cf_categories', []);
+  const catMap = {};
+  prevTxs.filter(t=>t.type==='expense').forEach(t => {
+    if (t.category_id) catMap[t.category_id] = (catMap[t.category_id]||0) + t.amount;
+  });
+  const topCats = Object.entries(catMap).sort(([,a],[,b])=>b-a).slice(0,3);
+  $('ms-top-cats').innerHTML = topCats.map(([id, total]) => {
+    const cat = cats.find(c=>c.id===id);
+    if (!cat) return '';
+    const pct = expenses > 0 ? (total/expenses*100).toFixed(0) : 0;
+    return `<div style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;">
+      <span>${cat.icon}</span>
+      <span style="flex:1;">${cat.name}</span>
+      <span style="color:var(--text-muted);">${pct}%</span>
+      <span class="font-mono text-rose">${fmt(total,true)}</span>
+    </div>`;
+  }).join('');
+
+  // Mensaje coach
+  const rate = income > 0 ? ((savings/income)*100).toFixed(0) : 0;
+  const msgs = savings < 0
+    ? [`😟 Terminaste ${monthLabel} con déficit de ${fmt(Math.abs(savings))}. Este mes, fíjate un límite de gasto diario.`]
+    : rate >= 20
+    ? [`🏆 ¡Excelente! Ahorraste el ${rate}% de tus ingresos en ${monthLabel}. Sigue así.`]
+    : [`👍 Ahorraste el ${rate}% en ${monthLabel}. Intenta llegar al 20% este mes.`];
+  $('ms-coach-msg').textContent = msgs[0];
+  $('ms-subtitle').textContent  = `${prevTxs.length} movimientos registrados`;
+
+  lsSet('cf_last_month', currentMonth);
+  openOverlay('overlay-month-summary');
 }
 
 // ---- BACKUP / RESTORE ----

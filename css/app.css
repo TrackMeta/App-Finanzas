@@ -28,6 +28,11 @@
   --border: #E5E5EA;
   --text: #0A0A0B;
   --text-muted: #6B6B80;
+  /* Dim colors redefinidos para fondo claro */
+  --emerald-dim: rgba(16,185,129,0.12);
+  --rose-dim:    rgba(244,63,94,0.10);
+  --violet-dim:  rgba(139,92,246,0.12);
+  --amber-dim:   rgba(245,158,11,0.12);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1184,6 +1189,14 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 }
 .acc-chip.selected { font-weight: 700; }
 .acc-chip:active { transform: scale(0.95); }
+
+/* =============================================
+   CONFETTI
+============================================= */
+@keyframes confettiFall {
+  0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+}
 
 /* =============================================
    BANNER RECURRENTES PENDIENTES
