@@ -141,6 +141,21 @@
     </div>
   </aside>
 
+  <!-- Banner PWA: instalar app -->
+  <div id="pwa-banner" class="pwa-banner hidden">
+    <div style="display:flex;align-items:center;gap:0.75rem;flex:1;">
+      <span style="font-size:1.5rem;">📲</span>
+      <div>
+        <p style="font-weight:700;font-size:0.85rem;">Instala Coach Finanzas</p>
+        <p style="font-size:0.75rem;color:var(--text-muted);">Accede más rápido desde tu pantalla de inicio</p>
+      </div>
+    </div>
+    <div style="display:flex;gap:0.5rem;flex-shrink:0;">
+      <button id="pwa-install-btn" class="btn btn-primary btn-sm">Instalar</button>
+      <button id="pwa-dismiss-btn" class="btn btn-ghost btn-sm">✕</button>
+    </div>
+  </div>
+
   <!-- Contenido principal -->
   <main class="main-content">
 
@@ -334,6 +349,20 @@
           <div class="filter-row hidden" id="tx-cat-filters" style="margin-top:0.4rem;padding-bottom:4px;"></div>
         </div>
 
+        <!-- Filtro por rango de fechas — colapsable -->
+        <div id="tx-date-filter-wrap">
+          <button id="tx-date-toggle" class="cat-filter-toggle">
+            <span>📅 Filtrar por rango de fechas</span>
+            <span id="tx-date-toggle-arrow">▼</span>
+          </button>
+          <div id="tx-date-range" class="hidden" style="margin-top:0.4rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+            <input type="date" id="tx-date-from" class="input" style="flex:1;min-width:130px;font-size:0.85rem;padding:0.4rem 0.6rem;" />
+            <span class="text-muted text-sm">→</span>
+            <input type="date" id="tx-date-to" class="input" style="flex:1;min-width:130px;font-size:0.85rem;padding:0.4rem 0.6rem;" />
+            <button id="tx-date-clear" class="btn btn-sm btn-ghost text-rose" style="font-size:0.75rem;">✕ Limpiar</button>
+          </div>
+        </div>
+
         <!-- Banner: recurrentes pendientes -->
         <div id="recurring-banner" class="recurring-banner hidden">
           <span id="recurring-banner-text"></span>
@@ -345,6 +374,20 @@
 
         <!-- Lista -->
         <div id="transactions-list" class="tx-list"></div>
+      </div>
+    </div>
+
+    <!-- PAGE: ACCOUNTS -->
+    <div id="page-accounts" class="page hidden">
+      <div class="page-inner">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Mis cuentas</h1>
+            <p id="accounts-total-label" class="text-muted text-sm"></p>
+          </div>
+          <button id="btn-new-account-page" class="btn btn-primary btn-sm">+ Nueva</button>
+        </div>
+        <div id="accounts-page-list"></div>
       </div>
     </div>
 
@@ -633,6 +676,10 @@
         <button class="more-menu-item" data-page="debts">
           <span class="more-menu-icon">💳</span>
           <span>Deudas</span>
+        </button>
+        <button class="more-menu-item" data-page="accounts">
+          <span class="more-menu-icon">💰</span>
+          <span>Cuentas</span>
         </button>
         <button class="more-menu-item" data-page="calendar">
           <span class="more-menu-icon">📅</span>

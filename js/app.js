@@ -23,6 +23,8 @@ const State = {
   txFilterType: 'all',
   txCatFilter: '',
   txSearch: '',
+  txDateFrom: '',
+  txDateTo: '',
   quickAddAccountId: '',
   selectedDebtId: null,
   selectedDebtName: '',
@@ -61,8 +63,9 @@ function navigate(page) {
   if (page === 'debts') loadDebts();
   if (page === 'calendar') loadCalendar();
   if (page === 'insights') loadInsights();
-  if (page === 'reports') loadReports();
-  if (page === 'profile') loadProfile();
+  if (page === 'reports')   loadReports();
+  if (page === 'profile')   loadProfile();
+  if (page === 'accounts')  loadAccountsPage();
 }
 
 // ---- SHOW APP ----
@@ -469,6 +472,20 @@ function renderInsights(container, insights) {
 
 // ---- TRANSACTIONS PAGE ----
 async function loadTransactions() {
+  // Si hay rango de fechas activo, ignorar el mes y filtrar por rango
+  if (State.txDateFrom && State.txDateTo) {
+    const all = lsGet('cf_transactions', []);
+    const cats = lsGet('cf_categories', []);
+    const ranged = all
+      .filter(t => t.date >= State.txDateFrom && t.date <= State.txDateTo)
+      .map(t => ({ ...t, category: cats.find(c => c.id === t.category_id) ?? null }))
+      .sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at));
+    State.transactions = ranged;
+    $('current-month-label').textContent = `${State.txDateFrom} → ${State.txDateTo}`;
+    renderTransactionsPage(ranged);
+    return;
+  }
+
   const label = $('current-month-label');
   label.textContent = fmtMonth(State.currentMonth);
 
@@ -782,6 +799,98 @@ async function deleteDebt(id) {
   if (!confirm('¿Eliminar esta deuda?')) return;
   try { await Debts.remove(id); toast('Deuda eliminada'); loadDebts(); }
   catch { toast('Error', 'error'); }
+}
+
+// ---- ACCOUNTS PAGE ----
+function loadAccountsPage() {
+  const accounts = Accounts.getAll();
+  const allTxs   = lsGet('cf_transactions', []);
+  const cats     = lsGet('cf_categories', []);
+
+  // Total entre todas las cuentas
+  const totalBal = accounts.reduce((s, a) => s + Accounts.getBalance(a.id), 0);
+  $('accounts-total-label').textContent = `Saldo total: ${fmt(totalBal)}`;
+
+  const container = $('accounts-page-list');
+  if (!accounts.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">💳</div><p>No tienes cuentas aún</p></div>`;
+    return;
+  }
+
+  container.innerHTML = accounts.map(acc => {
+    const bal  = Accounts.getBalance(acc.id);
+    // Últimas 5 transacciones de esta cuenta (por account_id o transferencias)
+    const txs  = allTxs
+      .filter(t => t.account_id === acc.id || t.from_account === acc.id || t.to_account === acc.id)
+      .sort((a,b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at))
+      .slice(0, 5)
+      .map(t => ({ ...t, category: cats.find(c => c.id === t.category_id) ?? null }));
+
+    const txRows = txs.length ? txs.map(t => {
+      const sign = t.account_id === acc.id
+        ? (t.type === 'income' ? '+' : '-')
+        : (t.to_account === acc.id ? '+' : '-');
+      const color = sign === '+' ? 'var(--emerald)' : 'var(--rose)';
+      return `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;border-bottom:1px solid var(--border);font-size:0.82rem;">
+        <span style="width:22px;text-align:center;">${t.category?.icon ?? (t.type==='transfer'?'↔️':'💸')}</span>
+        <span style="flex:1;color:var(--text-muted);">${t.category?.name ?? (t.type==='transfer'?'Transferencia':'Sin categoría')}${t.note?' · '+t.note:''}</span>
+        <span style="font-family:monospace;font-weight:700;color:${color};">${sign}${fmt(t.amount,true)}</span>
+        <span style="color:var(--text-muted);font-size:0.7rem;white-space:nowrap;">${fmtDate(t.date)}</span>
+      </div>`;
+    }).join('') : `<p class="text-muted text-sm" style="padding:0.5rem 0;">Sin movimientos vinculados</p>`;
+
+    return `
+    <div class="card" style="margin-bottom:0.75rem;">
+      <div class="card-body">
+        <!-- Cabecera cuenta -->
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+          <div style="width:44px;height:44px;border-radius:14px;background:${acc.color}20;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0;">${acc.icon}</div>
+          <div style="flex:1;">
+            <p style="font-weight:700;">${acc.name}</p>
+            <p style="font-size:1.1rem;font-family:monospace;font-weight:800;color:${bal>=0?acc.color:'var(--rose)'};">${fmt(bal)}</p>
+          </div>
+          <div style="display:flex;gap:0.4rem;">
+            <button class="btn btn-sm btn-ghost" onclick="openEditAccountPage('${acc.id}')">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteAccountPage('${acc.id}')">🗑</button>
+          </div>
+        </div>
+        <!-- Últimos movimientos -->
+        <p style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:0.25rem;">Últimos movimientos</p>
+        ${txRows}
+        ${txs.length >= 5 ? `<button class="btn btn-sm btn-ghost btn-full" style="margin-top:0.4rem;font-size:0.75rem;" onclick="filterTxByAccount('${acc.id}')">Ver todos →</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openEditAccountPage(id) {
+  // Reutilizamos el modal de cuentas existente enfocándonos en la edición
+  openAccountsModal();
+  // Pequeño delay para que el modal esté en DOM y podamos hacer scroll al item
+  setTimeout(() => {
+    const editBtn = document.querySelector(`.acc-edit-btn[data-id="${id}"]`);
+    if (editBtn) { editBtn.click(); editBtn.scrollIntoView({ behavior:'smooth', block:'center' }); }
+  }, 100);
+}
+
+function deleteAccountPage(id) {
+  if (!confirm('¿Eliminar esta cuenta? Las transacciones vinculadas no se eliminarán.')) return;
+  Accounts.remove(id);
+  toast('Cuenta eliminada', 'success');
+  loadAccountsPage();
+}
+
+function filterTxByAccount(accId) {
+  // Navegar a movimientos y poner filtro de la cuenta en el buscador
+  navigate('transactions');
+  setTimeout(() => {
+    const acc = Accounts.getAll().find(a => a.id === accId);
+    if (acc) {
+      State.txSearch = acc.name;
+      $('tx-search').value = acc.name;
+      renderTransactionsPage(State.transactions);
+    }
+  }, 200);
 }
 
 function openPayDebt(id, name, total, paid) {
@@ -2205,6 +2314,32 @@ async function init() {
     });
   });
 
+  // -- Filtro por rango de fechas --
+  $('tx-date-toggle').addEventListener('click', () => {
+    const panel = $('tx-date-range');
+    const arrow = $('tx-date-toggle-arrow');
+    const open  = panel.classList.toggle('hidden');
+    $('tx-date-toggle').classList.toggle('open', !open);
+    arrow.textContent = open ? '▼' : '▲';
+  });
+
+  function applyDateRange() {
+    State.txDateFrom = $('tx-date-from').value;
+    State.txDateTo   = $('tx-date-to').value;
+    if (State.txDateFrom && State.txDateTo) loadTransactions();
+  }
+  $('tx-date-from').addEventListener('change', applyDateRange);
+  $('tx-date-to').addEventListener('change', applyDateRange);
+  $('tx-date-clear').addEventListener('click', () => {
+    State.txDateFrom = ''; State.txDateTo = '';
+    $('tx-date-from').value = ''; $('tx-date-to').value = '';
+    // Cerrar panel
+    $('tx-date-range').classList.add('hidden');
+    $('tx-date-toggle').classList.remove('open');
+    $('tx-date-toggle-arrow').textContent = '▼';
+    loadTransactions();
+  });
+
   // -- Month nav (transactions) --
   $('prev-month').addEventListener('click', () => {
     const [y,m] = State.currentMonth.split('-').map(Number);
@@ -2282,6 +2417,12 @@ async function init() {
     if (arrow) arrow.textContent = isHidden ? '▼' : '▲';
   });
 
+  // -- Página de Cuentas: botón nueva cuenta --
+  $('btn-new-account-page').addEventListener('click', () => openAccountsModal());
+
+  // -- PWA install prompt --
+  setupPWAPrompt();
+
   // -- Links con data-page --
   document.addEventListener('click', e => {
     const link = e.target.closest('[data-page]');
@@ -2290,6 +2431,63 @@ async function init() {
       navigate(link.dataset.page);
     }
   });
+}
+
+// ---- PWA INSTALL PROMPT ----
+function setupPWAPrompt() {
+  // No mostrar si ya fue instalado (display=standalone) o descartado
+  if (window.matchMedia('(display-mode: standalone)').matches) return;
+  if (lsGet('cf_pwa_dismissed', false)) return;
+
+  // Incrementar contador de visitas
+  const visits = (lsGet('cf_pwa_visits', 0)) + 1;
+  lsSet('cf_pwa_visits', visits);
+
+  let deferredPrompt = null;
+
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredPrompt = e;
+    // Mostrar banner solo si el usuario lleva ≥ 2 visitas
+    if (visits >= 2) showPWABanner();
+  });
+
+  function showPWABanner() {
+    const banner = $('pwa-banner');
+    banner.classList.remove('hidden');
+
+    $('pwa-install-btn').addEventListener('click', async () => {
+      banner.classList.add('hidden');
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') toast('¡App instalada! 🎉', 'success');
+      deferredPrompt = null;
+      lsSet('cf_pwa_dismissed', true);
+    });
+
+    $('pwa-dismiss-btn').addEventListener('click', () => {
+      banner.classList.add('hidden');
+      lsSet('cf_pwa_dismissed', true);
+    });
+  }
+
+  // Si ya hubo prompt antes (iOS/Safari no soporta beforeinstallprompt)
+  // mostrar instrucción genérica tras 3 visitas
+  if (visits === 3) {
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isIOS && !deferredPrompt) {
+      const banner = $('pwa-banner');
+      banner.querySelector('p:last-child').textContent = 'Toca Compartir → "Agregar a inicio"';
+      banner.classList.remove('hidden');
+      $('pwa-install-btn').textContent = 'Cómo instalar';
+      $('pwa-install-btn').addEventListener('click', () => banner.classList.add('hidden'));
+      $('pwa-dismiss-btn').addEventListener('click', () => {
+        banner.classList.add('hidden');
+        lsSet('cf_pwa_dismissed', true);
+      });
+    }
+  }
 }
 
 // ---- CONFETTI ----
