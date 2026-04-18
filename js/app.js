@@ -160,6 +160,7 @@ function reloadCurrentPage() {
   if (page === 'transactions') loadTransactions();
   if (page === 'insights')     loadInsights();
   if (page === 'accounts')     loadAccountsPage();
+  if (page === 'reports')      renderReports();
 }
 
 // ---- ROUTER ----
@@ -173,7 +174,7 @@ function navigate(page) {
   });
 
   // Barra de filtro de fechas: visible en páginas financieras principales
-  const showDateBar = ['dashboard','transactions','insights','accounts'].includes(page);
+  const showDateBar = ['dashboard','transactions','insights','accounts','reports'].includes(page);
   const dateBar = $('global-date-bar');
   if (dateBar) {
     dateBar.classList.toggle('hidden', !showDateBar);
@@ -942,16 +943,24 @@ function loadAccountsPage() {
     return;
   }
 
+  const periodLabel = getDateRangeLabel();
+
   container.innerHTML = accounts.map(acc => {
-    const bal  = Accounts.getBalance(acc.id);
-    // Últimas 5 transacciones de esta cuenta (por account_id o transferencias)
-    const txs  = allTxs
+    // Saldo real total (siempre, sin filtro de fecha = dinero real disponible)
+    const bal = Accounts.getBalance(acc.id);
+
+    // Movimientos del período filtrado para esta cuenta
+    const periodTxs = allTxs
       .filter(t => t.account_id === acc.id || t.from_account === acc.id || t.to_account === acc.id)
       .sort((a,b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at))
-      .slice(0, 5)
       .map(t => ({ ...t, category: cats.find(c => c.id === t.category_id) ?? null }));
 
-    const txRows = txs.length ? txs.map(t => {
+    // Resumen del período
+    const periodIncome  = periodTxs.filter(t=>t.account_id===acc.id && t.type==='income').reduce((s,t)=>s+t.amount,0);
+    const periodExpense = periodTxs.filter(t=>t.account_id===acc.id && t.type==='expense').reduce((s,t)=>s+t.amount,0);
+    const hasPeriodActivity = periodIncome > 0 || periodExpense > 0;
+
+    const txRows = periodTxs.slice(0,5).length ? periodTxs.slice(0,5).map(t => {
       const sign = t.account_id === acc.id
         ? (t.type === 'income' ? '+' : '-')
         : (t.to_account === acc.id ? '+' : '-');
@@ -962,27 +971,40 @@ function loadAccountsPage() {
         <span style="font-family:monospace;font-weight:700;color:${color};">${sign}${fmt(t.amount,true)}</span>
         <span style="color:var(--text-muted);font-size:0.7rem;white-space:nowrap;">${fmtDate(t.date)}</span>
       </div>`;
-    }).join('') : `<p class="text-muted text-sm" style="padding:0.5rem 0;">Sin movimientos vinculados</p>`;
+    }).join('') : `<p class="text-muted text-sm" style="padding:0.5rem 0;">Sin movimientos en este período</p>`;
 
     return `
     <div class="card" style="margin-bottom:0.75rem;">
       <div class="card-body">
         <!-- Cabecera cuenta -->
-        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
           <div style="width:44px;height:44px;border-radius:14px;background:${acc.color}20;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0;">${acc.icon}</div>
           <div style="flex:1;">
             <p style="font-weight:700;">${acc.name}</p>
-            <p style="font-size:1.1rem;font-family:monospace;font-weight:800;color:${bal>=0?acc.color:'var(--rose)'};">${fmt(bal)}</p>
+            <p style="font-size:1.15rem;font-family:monospace;font-weight:800;color:${bal>=0?acc.color:'var(--rose)'};">${fmt(bal)}</p>
+            <p style="font-size:0.68rem;color:var(--text-muted);">Saldo actual (acumulado total)</p>
           </div>
           <div style="display:flex;gap:0.4rem;">
             <button class="btn btn-sm btn-ghost" onclick="openEditAccountPage('${acc.id}')">✏️</button>
             <button class="btn btn-sm btn-danger" onclick="deleteAccountPage('${acc.id}')">🗑</button>
           </div>
         </div>
-        <!-- Últimos movimientos -->
-        <p style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:0.25rem;">Últimos movimientos</p>
+        <!-- Resumen del período -->
+        ${hasPeriodActivity ? `
+        <div style="display:flex;gap:0.5rem;margin-bottom:0.6rem;">
+          <div style="flex:1;background:var(--emerald-dim);border-radius:var(--radius-sm);padding:0.4rem 0.6rem;">
+            <p style="font-size:0.65rem;color:var(--text-muted);">Entradas (${periodLabel})</p>
+            <p style="font-size:0.9rem;font-weight:700;color:var(--emerald);">+${fmt(periodIncome,true)}</p>
+          </div>
+          <div style="flex:1;background:var(--rose-dim);border-radius:var(--radius-sm);padding:0.4rem 0.6rem;">
+            <p style="font-size:0.65rem;color:var(--text-muted);">Salidas (${periodLabel})</p>
+            <p style="font-size:0.9rem;font-weight:700;color:var(--rose);">-${fmt(periodExpense,true)}</p>
+          </div>
+        </div>` : ''}
+        <!-- Movimientos del período -->
+        <p style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:0.25rem;">Movimientos · ${periodLabel}</p>
         ${txRows}
-        ${txs.length >= 5 ? `<button class="btn btn-sm btn-ghost btn-full" style="margin-top:0.4rem;font-size:0.75rem;" onclick="filterTxByAccount('${acc.id}')">Ver todos →</button>` : ''}
+        ${periodTxs.length >= 5 ? `<button class="btn btn-sm btn-ghost btn-full" style="margin-top:0.4rem;font-size:0.75rem;" onclick="filterTxByAccount('${acc.id}')">Ver todos en Movimientos →</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -1161,44 +1183,26 @@ function openBudgetsModal(cats, budgets) {
 
 async function loadInsights() {
   const { from, to } = getActiveDateRange();
-  const prevRange     = getPrevPeriodRange(from, to);
 
-  const [txs, cats, prevTxs] = await Promise.all([
+  const [txs, cats] = await Promise.all([
     Transactions.getByDateRange(from, to),
-    Categories.getAll(),
-    Transactions.getByDateRange(prevRange.from, prevRange.to)
+    Categories.getAll()
   ]);
   State.transactions = txs;
   State.categories   = cats;
 
-  // Presupuestos (siempre por mes)
+  // Presupuestos (siempre por mes del período activo)
   const budgetMonth = from.slice(0,7);
   const budgets = Budgets.getAll(budgetMonth);
   renderBudgetsList(txs, cats, budgets);
 
-  // Score (bug fix: Streaks.get() no recibe argumento)
-  const streak = Streaks.get();
-  const score  = calcScore(txs, Goals.getAll(), budgets, streak);
-  renderScore(score);
-
   // Proyección / Resumen de período
   const thisMonthKey = new Date().toISOString().slice(0,7);
-  // Solo proyección real si estamos viendo el mes actual completo
   const isPastPeriod = (State.dateFilter === 'month' && State.currentMonth < thisMonthKey)
                     || (State.dateFilter !== 'month' && to < today());
   const incomeTotal  = txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const expTotal     = txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
   renderProjection(txs, isPastPeriod, incomeTotal, expTotal);
-
-  // Gráfico semanal
-  renderWeeklyChart(txs);
-
-  // Simulador
-  renderSimCategories(cats, txs);
-
-  // Insights — bug fix: se pasan los budgets para activar esas reglas
-  const insights = generateInsights(txs, prevTxs, cats, budgets);
-  renderInsights($('all-insights'), insights);
 }
 
 function renderScore(score) {
@@ -1702,7 +1706,6 @@ function renderDashBudgets(txs, cats, budgets) {
 let _reportRange = 6;
 
 async function loadReports() {
-  // Filtros de rango
   const filterBtns = document.querySelectorAll('[data-range]');
   filterBtns.forEach(btn => {
     btn.classList.toggle('active', parseInt(btn.dataset.range) === _reportRange);
@@ -1712,135 +1715,153 @@ async function loadReports() {
       renderReports();
     };
   });
+  // Mostrar/ocultar selector de rango mensual según el filtro de fechas
+  const rangeSelector = document.querySelector('#page-reports .filter-row');
+  if (rangeSelector) rangeSelector.classList.toggle('hidden', State.dateFilter !== 'month');
   renderReports();
 }
 
 async function renderReports() {
-  const n = _reportRange;
-  const months = [];
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(1);
-    d.setMonth(d.getMonth() - i);
-    months.push(d.toISOString().slice(0, 7));
+  // Mostrar/ocultar selector de rango mensual
+  const rangeSelector = document.querySelector('#page-reports .filter-row');
+  if (rangeSelector) rangeSelector.classList.toggle('hidden', State.dateFilter !== 'month');
+
+  let txsAll, cats, monthLabels = null;
+  cats = Categories.getAll();
+
+  if (State.dateFilter === 'month') {
+    // Modo histórico multi-mes: usa _reportRange meses hacia atrás desde State.currentMonth
+    const [cy, cm] = State.currentMonth.split('-').map(Number);
+    const months = [];
+    for (let i = _reportRange - 1; i >= 0; i--) {
+      const d = new Date(cy, cm - 1, 1); d.setMonth(d.getMonth() - i);
+      months.push(d.toISOString().slice(0, 7));
+    }
+    $('report-range-label').textContent = `${fmtMonth(months[0])} – ${fmtMonth(months[months.length-1])}`;
+    const monthsData = months.map(m => Transactions.getByMonth(m));
+    monthLabels = months.map(m => {
+      const [y, mo] = m.split('-');
+      return new Date(y, mo-1, 1).toLocaleDateString('es-PE', {month:'short', year:'2-digit'});
+    });
+    const incomeData  = monthsData.map(txs => txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0));
+    const expenseData = monthsData.map(txs => txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0));
+    const savingsData = monthsData.map((_,i) => Math.max(0, incomeData[i]-expenseData[i]));
+    txsAll = monthsData.flat();
+
+    // Chart: barras mensuales
+    const isDark = document.documentElement.dataset.theme !== 'light';
+    const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    const tickColor = isDark ? '#71717a' : '#6B6B80';
+    const ctx = $('chart-monthly').getContext('2d');
+    if (State.charts.monthly) State.charts.monthly.destroy();
+    State.charts.monthly = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: monthLabels, datasets: [
+        { label:'Ingresos', data:incomeData,  backgroundColor:'rgba(16,185,129,0.75)', borderRadius:5 },
+        { label:'Gastos',   data:expenseData, backgroundColor:'rgba(244,63,94,0.75)',  borderRadius:5 }
+      ]},
+      options: {
+        plugins: { legend: { labels: { color: tickColor, font:{size:11} } } },
+        scales: {
+          x: { ticks:{color:tickColor,font:{size:10}}, grid:{display:false} },
+          y: { ticks:{color:tickColor, callback:v=>fmt(v,true)}, grid:{color:gridColor} }
+        }
+      }
+    });
+
+    // Chart: tendencia de ahorro
+    const ctx2 = $('chart-savings-trend').getContext('2d');
+    if (State.charts.savingsTrend) State.charts.savingsTrend.destroy();
+    State.charts.savingsTrend = new Chart(ctx2, {
+      type:'line',
+      data: { labels: monthLabels, datasets:[{
+        label:'Ahorro', data:savingsData,
+        borderColor:'#3B82F6', backgroundColor:'rgba(59,130,246,0.15)',
+        fill:true, tension:0.4, pointRadius:4, borderWidth:2, pointBackgroundColor:'#3B82F6'
+      }]},
+      options: {
+        plugins:{legend:{display:false}},
+        scales: {
+          x:{ticks:{color:tickColor,font:{size:10}},grid:{display:false}},
+          y:{ticks:{color:tickColor, callback:v=>fmt(v,true)},grid:{color:gridColor}}
+        }
+      }
+    });
+
+    // Resumen
+    const totalIncome   = incomeData.reduce((s,v)=>s+v,0);
+    const totalExpenses = expenseData.reduce((s,v)=>s+v,0);
+    const totalSavings  = totalIncome - totalExpenses;
+    const avgExpense    = totalExpenses / _reportRange;
+    const nonZeroExp    = expenseData.filter(v=>v>0);
+    const bestIdx       = nonZeroExp.length ? expenseData.indexOf(Math.min(...nonZeroExp)) : -1;
+    const worstIdx      = expenseData.indexOf(Math.max(...expenseData));
+    $('report-summary').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+        <div class="stat-card income"  style="padding:0.75rem;"><p class="stat-label">Ingresos totales</p><p class="stat-value" style="font-size:1rem;">${fmt(totalIncome,true)}</p></div>
+        <div class="stat-card expense" style="padding:0.75rem;"><p class="stat-label">Gastos totales</p><p class="stat-value" style="font-size:1rem;">${fmt(totalExpenses,true)}</p></div>
+        <div class="stat-card ${totalSavings>=0?'savings':'expense'}" style="padding:0.75rem;"><p class="stat-label">Ahorro total</p><p class="stat-value" style="font-size:1rem;">${totalSavings<0?'-':''}${fmt(Math.abs(totalSavings),true)}</p></div>
+        <div class="stat-card" style="padding:0.75rem;background:var(--bg-secondary);"><p class="stat-label">Promedio/mes</p><p class="stat-value" style="font-size:1rem;">${fmt(avgExpense,true)}</p></div>
+      </div>
+      ${bestIdx>=0?`<p class="text-muted text-xs">✅ Mes más económico: <strong style="color:var(--emerald)">${fmtMonth(months[bestIdx])}</strong></p>`:''}
+      ${expenseData.some(v=>v>0)?`<p class="text-muted text-xs">⚠️ Mes con más gastos: <strong style="color:var(--rose)">${fmtMonth(months[worstIdx])}</strong></p>`:''}`;
+
+  } else {
+    // Modo filtro de período: usa el rango activo (hoy, ayer, semana, rango personalizado)
+    const { from, to } = getActiveDateRange();
+    $('report-range-label').textContent = getDateRangeLabel();
+    txsAll = Transactions.getByDateRange(from, to);
+
+    // Destruir charts mensuales si existen
+    if (State.charts.monthly)      { State.charts.monthly.destroy();      State.charts.monthly = null; }
+    if (State.charts.savingsTrend) { State.charts.savingsTrend.destroy(); State.charts.savingsTrend = null; }
+
+    // Limpiar canvas (mostrar mensaje de que no aplican en este modo)
+    const ctx = $('chart-monthly').getContext('2d');
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    const ctx2 = $('chart-savings-trend').getContext('2d');
+    ctx2.clearRect(0, 0, ctx2.canvas.width, ctx2.canvas.height);
+
+    // Resumen del período
+    const income   = txsAll.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+    const expenses = txsAll.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+    const savings  = income - expenses;
+    $('report-summary').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+        <div class="stat-card income"  style="padding:0.75rem;"><p class="stat-label">Ingresos</p><p class="stat-value" style="font-size:1rem;">${fmt(income,true)}</p></div>
+        <div class="stat-card expense" style="padding:0.75rem;"><p class="stat-label">Gastos</p><p class="stat-value" style="font-size:1rem;">${fmt(expenses,true)}</p></div>
+        <div class="stat-card ${savings>=0?'savings':'expense'}" style="grid-column:1/-1;padding:0.75rem;">
+          <p class="stat-label">${savings>=0?'Ahorro':'Déficit'}</p>
+          <p class="stat-value" style="font-size:1.1rem;">${savings<0?'-':''}${fmt(Math.abs(savings),true)}</p>
+        </div>
+      </div>
+      ${txsAll.length === 0 ? '<p class="text-muted text-sm text-center">Sin transacciones en este período</p>' : ''}`;
   }
 
-  $('report-range-label').textContent =
-    `${fmtMonth(months[0])} – ${fmtMonth(months[months.length - 1])}`;
-
-  const monthsData = await Promise.all(months.map(m => Transactions.getByMonth(m)));
-  const cats = Categories.getAll();
-
-  const labels      = months.map(m => {
-    const [y, mo] = m.split('-');
-    return new Date(y, mo - 1, 1).toLocaleDateString('es-PE', { month: 'short', year:'2-digit' });
+  // Top categorías — siempre se muestra
+  const byCat = {};
+  (txsAll || []).filter(t=>t.type==='expense').forEach(t => {
+    if (t.category_id) byCat[t.category_id] = (byCat[t.category_id]||0) + t.amount;
   });
-  const incomeData  = monthsData.map(txs => txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0));
-  const expenseData = monthsData.map(txs => txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0));
-  const savingsData = monthsData.map((_, i) => Math.max(0, incomeData[i] - expenseData[i]));
-
-  // Chart: barras ingresos vs gastos
-  const ctx = $('chart-monthly').getContext('2d');
-  if (State.charts.monthly) State.charts.monthly.destroy();
-  State.charts.monthly = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Ingresos',  data: incomeData,  backgroundColor: 'rgba(16,185,129,0.75)', borderRadius: 5 },
-        { label: 'Gastos',    data: expenseData, backgroundColor: 'rgba(244,63,94,0.75)',  borderRadius: 5 },
-      ]
-    },
-    options: {
-      plugins: { legend: { labels: { color: '#71717a', font: { size: 11 } } } },
-      scales: {
-        x: { ticks: { color: '#71717a', font: { size: 10 } }, grid: { display: false } },
-        y: { ticks: { color: '#71717a', callback: v => fmt(v, true) }, grid: { color: 'rgba(255,255,255,0.05)' } }
-      }
-    }
-  });
-
-  // Chart: tendencia ahorro
-  const ctx2 = $('chart-savings-trend').getContext('2d');
-  if (State.charts.savingsTrend) State.charts.savingsTrend.destroy();
-  State.charts.savingsTrend = new Chart(ctx2, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label: 'Ahorro', data: savingsData,
-        borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.15)',
-        fill: true, tension: 0.4, pointRadius: 4, borderWidth: 2,
-        pointBackgroundColor: '#3B82F6'
-      }]
-    },
-    options: {
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: '#71717a', font: { size: 10 } }, grid: { display: false } },
-        y: { ticks: { color: '#71717a', callback: v => fmt(v, true) }, grid: { color: 'rgba(255,255,255,0.05)' } }
-      }
-    }
-  });
-
-  // Resumen del periodo
-  const totalIncome   = incomeData.reduce((s, v) => s + v, 0);
-  const totalExpenses = expenseData.reduce((s, v) => s + v, 0);
-  const totalSavings  = totalIncome - totalExpenses;
-  const avgExpense    = totalExpenses / n;
-  const nonZeroExp    = expenseData.filter(v => v > 0);
-  const bestIdx       = expenseData.indexOf(Math.min(...(nonZeroExp.length ? nonZeroExp : [0])));
-  const worstIdx      = expenseData.indexOf(Math.max(...expenseData));
-
-  $('report-summary').innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
-      <div class="stat-card income" style="padding:0.75rem;">
-        <p class="stat-label">Ingresos totales</p>
-        <p class="stat-value" style="font-size:1rem;">${fmt(totalIncome, true)}</p>
-      </div>
-      <div class="stat-card expense" style="padding:0.75rem;">
-        <p class="stat-label">Gastos totales</p>
-        <p class="stat-value" style="font-size:1rem;">${fmt(totalExpenses, true)}</p>
-      </div>
-      <div class="stat-card ${totalSavings >= 0 ? 'savings' : 'expense'}" style="padding:0.75rem;">
-        <p class="stat-label">Ahorro total</p>
-        <p class="stat-value" style="font-size:1rem;">
-          ${totalSavings < 0 ? '-' : ''}${fmt(Math.abs(totalSavings), true)}
-          ${totalSavings < 0 ? '<small style="font-size:0.65rem;display:block;">déficit</small>' : ''}
-        </p>
-      </div>
-      <div class="stat-card" style="padding:0.75rem;background:var(--bg-secondary);">
-        <p class="stat-label">Gasto promedio/mes</p>
-        <p class="stat-value" style="font-size:1rem;">${fmt(avgExpense, true)}</p>
-      </div>
-    </div>
-    ${nonZeroExp.length && bestIdx >= 0 ? `<p class="text-muted text-xs">✅ Mes más económico: <strong style="color:var(--emerald)">${fmtMonth(months[bestIdx])}</strong></p>` : ''}
-    ${expenseData.some(v => v > 0) ? `<p class="text-muted text-xs">⚠️ Mes con más gastos: <strong style="color:var(--rose)">${fmtMonth(months[worstIdx])}</strong></p>` : ''}`;
-
-  // Top categorías
-  const allTxs = monthsData.flat();
-  const byCat  = {};
-  allTxs.filter(t => t.type === 'expense').forEach(t => {
-    if (t.category_id) byCat[t.category_id] = (byCat[t.category_id] || 0) + t.amount;
-  });
-  const totalCatExp = Object.values(byCat).reduce((s, v) => s + v, 0);
-  const topCats     = Object.entries(byCat).sort(([, a], [, b]) => b - a).slice(0, 6);
+  const totalCatExp = Object.values(byCat).reduce((s,v)=>s+v,0);
+  const topCats     = Object.entries(byCat).sort(([,a],[,b])=>b-a).slice(0,6);
 
   $('report-top-cats').innerHTML = topCats.length ? topCats.map(([id, amount]) => {
-    const cat   = cats.find(c => c.id === id);
-    const pct   = totalCatExp > 0 ? ((amount / totalCatExp) * 100).toFixed(0) : 0;
+    const cat = cats.find(c=>c.id===id);
+    const pct = totalCatExp>0 ? ((amount/totalCatExp)*100).toFixed(0) : 0;
     const color = cat?.color ?? '#6B7280';
     return `
       <div style="padding:0.45rem 0;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <span style="font-size:0.875rem;">${cat?.icon ?? '💸'} ${cat?.name ?? 'Otros'}</span>
-          <span style="font-size:0.8rem;color:${color};font-weight:600;">${fmt(amount, true)} · ${pct}%</span>
+          <span style="font-size:0.875rem;">${cat?.icon??'💸'} ${cat?.name??'Otros'}</span>
+          <span style="font-size:0.8rem;color:${color};font-weight:600;">${fmt(amount,true)} · ${pct}%</span>
         </div>
         <div style="background:var(--bg-secondary);border-radius:99px;height:6px;overflow:hidden;">
           <div style="width:${pct}%;height:100%;background:${color};border-radius:99px;"></div>
         </div>
       </div>`;
   }).join('') : '<p class="text-muted text-sm">Sin gastos en el periodo</p>';
+
 }
 
 // ---- EXPORTAR PDF ----
@@ -1955,6 +1976,40 @@ async function exportPDF() {
   setTimeout(() => win.print(), 400);
 }
 
+// ---- FOTO DE PERFIL ----
+function handleProfilePhoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { toast('La imagen no debe superar 2 MB', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const base64 = e.target.result;
+    Profiles.update(null, { photo: base64 });
+    renderProfileAvatar(base64);
+    toast('Foto de perfil actualizada ✓', 'success');
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeProfilePhoto() {
+  if (!confirm('¿Quitar la foto de perfil?')) return;
+  Profiles.update(null, { photo: null });
+  renderProfileAvatar(null);
+  toast('Foto eliminada', 'success');
+}
+
+function renderProfileAvatar(photo) {
+  const av = $('profile-avatar');
+  const removeBtn = $('btn-remove-photo');
+  if (photo) {
+    av.innerHTML = `<img src="${photo}" alt="Foto de perfil" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+    removeBtn?.classList.remove('hidden');
+  } else {
+    av.innerHTML = '👤';
+    removeBtn?.classList.add('hidden');
+  }
+}
+
 // ---- PROFILE PAGE ----
 async function loadProfile() {
   if (!State.user) return;
@@ -1967,9 +2022,10 @@ async function loadProfile() {
   $('profile-name').textContent = profile?.name || State.user.email?.split('@')[0] || 'Usuario';
   $('profile-email').textContent = State.user.email || '';
 
-  if (profile?.avatar_url) {
-    $('profile-avatar').innerHTML = `<img src="${profile.avatar_url}" alt="avatar">`;
-  }
+  // Foto de perfil (base64) o avatar_url
+  const photo = profile?.photo || profile?.avatar_url || null;
+  renderProfileAvatar(photo);
+
   if (profile?.financial_profile) {
     const badges = {saver:'🏅 Ahorrador', spender:'💸 Gastador', balanced:'⚖️ Equilibrado'};
     $('profile-badge').textContent = badges[profile.financial_profile] || '';

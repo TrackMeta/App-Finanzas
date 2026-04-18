@@ -456,33 +456,6 @@
       <div class="page-inner">
         <h1 class="page-title">Análisis financiero</h1>
 
-        <!-- Score -->
-        <div class="card">
-          <div class="card-header">
-            <h3 class="card-title">Salud financiera</h3>
-            <span class="text-xs text-muted">4 factores · máx 100 pts</span>
-          </div>
-          <div class="card-body">
-            <div class="score-container">
-              <div class="score-gauge">
-                <svg viewBox="0 0 100 100" width="120" height="120">
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border)" stroke-width="10"/>
-                  <circle id="score-arc" cx="50" cy="50" r="40" fill="none" stroke="#10B981" stroke-width="10"
-                    stroke-dasharray="251.2" stroke-dashoffset="251.2"
-                    stroke-linecap="round" transform="rotate(-90 50 50)"/>
-                </svg>
-                <div class="score-center">
-                  <span id="score-grade" class="score-grade">-</span>
-                  <span id="score-grade-label" class="score-grade-label"></span>
-                  <span id="score-value" class="score-value">0 pts</span>
-                </div>
-              </div>
-              <div class="score-breakdown" id="score-breakdown"></div>
-            </div>
-            <p id="score-message" class="text-muted text-sm text-center mt-3"></p>
-          </div>
-        </div>
-
         <!-- Presupuestos -->
         <div class="card">
           <div class="card-header">
@@ -501,42 +474,20 @@
             <p class="text-muted text-sm text-center">Cargando…</p>
           </div>
         </div>
-
-        <!-- Gráfico semanal -->
-        <div class="card">
-          <div class="card-header"><h3 class="card-title">Ingresos vs Gastos por semana</h3></div>
-          <div class="card-body">
-            <canvas id="chart-weekly" height="150"></canvas>
-          </div>
-        </div>
-
-        <!-- Simulador -->
-        <div class="card">
-          <div class="card-header"><h3 class="card-title">Simulador de ahorro</h3></div>
-          <div class="card-body">
-            <p class="text-muted text-sm mb-2">¿En qué categoría quieres reducir gastos?</p>
-            <div id="sim-categories" class="filter-row flex-wrap"></div>
-            <div id="sim-controls" class="hidden mt-3">
-              <div class="sim-slider-row">
-                <label class="text-sm text-muted" id="sim-label">Reducir un 20%</label>
-              </div>
-              <input type="range" id="sim-slider" min="5" max="100" step="5" value="20" class="slider" />
-              <div id="sim-result" class="sim-result hidden"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Todos los insights -->
-        <div id="all-insights" class="insights-container"></div>
       </div>
     </div>
 
     <!-- PAGE: PROFILE -->
     <div id="page-profile" class="page hidden">
       <div class="page-inner">
-        <!-- Avatar -->
+        <!-- Avatar + Foto de perfil -->
         <div class="profile-header">
-          <div class="avatar" id="profile-avatar">👤</div>
+          <div class="avatar-wrap">
+            <div class="avatar" id="profile-avatar">👤</div>
+            <label class="avatar-edit-btn" title="Cambiar foto" for="input-profile-photo">📷</label>
+            <input type="file" id="input-profile-photo" accept="image/*"
+              style="display:none;" onchange="handleProfilePhoto(this)" />
+          </div>
           <div style="display:flex;align-items:center;gap:0.5rem;">
             <h1 id="profile-name" class="font-bold text-xl"></h1>
             <button id="btn-edit-name" class="btn-icon" style="font-size:0.9rem;">✏️</button>
@@ -547,6 +498,9 @@
           </div>
           <p id="profile-email" class="text-muted text-sm"></p>
           <div id="profile-badge" class="badge hidden"></div>
+          <button id="btn-remove-photo" class="btn btn-xs btn-ghost text-muted hidden"
+            style="font-size:0.72rem;margin-top:-0.25rem;"
+            onclick="removeProfilePhoto()">✕ Quitar foto</button>
         </div>
 
         <!-- Racha -->
