@@ -613,9 +613,10 @@ async function deleteTx(id) {
   if (!confirm('¿Eliminar esta transacción?')) return;
   try {
     await Transactions.remove(id);
+    State.allTransactions = await Transactions.getAll();
     toast('Eliminado', 'success');
-    navigate('transactions');
     loadDashboard();
+    if ($('page-transactions').classList.contains('active')) loadTransactions();
   } catch { toast('Error al eliminar', 'error'); }
 }
 
@@ -643,7 +644,7 @@ async function loadTransactions() {
   if (State.dateFilter === 'month') checkRecurringSuggestion(txs);
 }
 
-function checkRecurringSuggestion(currentTxs) {
+async function checkRecurringSuggestion(currentTxs) {
   const banner = $('recurring-banner');
   if (!banner) return;
 
@@ -652,13 +653,13 @@ function checkRecurringSuggestion(currentTxs) {
     banner.classList.add('hidden'); return;
   }
 
-  // Recurrentes del mes anterior que aún no están este mes
+  // Recurrentes del mes anterior via Supabase
   const prevMonth = getPrevMonth(State.currentMonth);
-  const prevTxs = lsGet('cf_transactions', [])
-    .filter(t => t.date >= prevMonth + '-01' && t.date <= prevMonth + '-31' && t.is_recurring);
+  const prevTxs = await Transactions.getByMonth(prevMonth);
+  const prevRecurring = prevTxs.filter(t => t.is_recurring);
 
   const thisMonthCatIds = new Set(currentTxs.filter(t => t.is_recurring).map(t => t.category_id));
-  const pending = prevTxs.filter(t => !thisMonthCatIds.has(t.category_id));
+  const pending = prevRecurring.filter(t => !thisMonthCatIds.has(t.category_id));
 
   if (!pending.length) { banner.classList.add('hidden'); return; }
 
@@ -666,19 +667,18 @@ function checkRecurringSuggestion(currentTxs) {
   $('recurring-banner-text').textContent =
     `🔁 Tienes ${pending.length} gasto${pending.length > 1 ? 's' : ''} fijo${pending.length > 1 ? 's' : ''} del mes anterior sin registrar`;
 
-  $('recurring-banner-btn').onclick = () => {
-    pending.forEach(t => {
-      Transactions.add({
-        user_id: t.user_id || 'local',
-        type: t.type,
-        amount: t.amount,
-        date: today(),
-        note: t.note,
-        is_recurring: true,
-        category_id: t.category_id,
-        account_id: t.account_id || null,
-      });
-    });
+  $('recurring-banner-btn').onclick = async () => {
+    await Promise.all(pending.map(t => Transactions.add({
+      user_id: State.user?.id,
+      type: t.type,
+      amount: t.amount,
+      date: today(),
+      note: t.note,
+      is_recurring: true,
+      category_id: t.category_id,
+      account_id: t.account_id || null,
+    })));
+    State.allTransactions = await Transactions.getAll();
     toast(`${pending.length} gasto${pending.length > 1 ? 's' : ''} fijo${pending.length > 1 ? 's' : ''} agregado${pending.length > 1 ? 's' : ''} ✓`, 'success');
     banner.classList.add('hidden');
     loadTransactions();
@@ -773,7 +773,7 @@ function calcGoalProjection(goal) {
   if (remaining <= 0) return null;
   const now = new Date();
   // Ahorro promedio de los últimos 3 meses
-  const allTxs = lsGet('cf_transactions', []);
+  const allTxs = State.allTransactions;
   const samples = [];
   for (let i = 1; i <= 3; i++) {
     const d  = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -857,7 +857,7 @@ async function deleteGoal(id) {
 }
 
 function openEditGoal(id) {
-  const goal = Goals.getAll().find(g => g.id === id);
+  const goal = State.goals.find(g => g.id === id);
   if (!goal) return;
 
   // Configurar modal en modo edición
@@ -882,6 +882,7 @@ function openEditGoal(id) {
 // ---- DEBTS PAGE ----
 async function loadDebts() {
   const debts = await Debts.getAll();
+  State.debts = debts;
   const total = debts.reduce((s,d)=>s+(d.total-d.paid),0);
   $('debts-summary').textContent = debts.length ? `Total pendiente: ${fmt(total)}` : '';
 
@@ -1437,9 +1438,9 @@ function updateSimResult() {
 }
 
 // ---- LOGROS ----
-function checkAchievements() {
-  const txs = lsGet('cf_transactions', []);
-  const goals = Goals.getAll();
+async function checkAchievements() {
+  const txs    = State.allTransactions.length ? State.allTransactions : State.transactions;
+  const goals  = State.goals.length ? State.goals : await Goals.getAll();
   const streak = Streaks.get();
 
   const unlock = (type, label, icon) => {
@@ -1458,8 +1459,7 @@ function checkAchievements() {
   if (goals.some(g => g.current_amount >= g.target_amount)) unlock('goal_completed', 'Meta lograda', '🏆');
 
   // Ahorrador élite: tasa de ahorro > 25% este mes
-  const month = State.currentMonth;
-  const monthTxs = lsGet('cf_transactions', []).filter(t => t.date?.startsWith(month));
+  const monthTxs = State.transactions; // ya filtradas por el período activo
   const income   = monthTxs.filter(t => t.type === 'income').reduce((s,t) => s+t.amount, 0);
   const expenses = monthTxs.filter(t => t.type === 'expense').reduce((s,t) => s+t.amount, 0);
   if (income > 0 && (income - expenses) / income >= 0.25) unlock('savings_25', 'Ahorrador élite', '💎');
@@ -1515,8 +1515,7 @@ function scheduleReminder() {
 
   clearTimeout(window._reminderTimer);
   window._reminderTimer = setTimeout(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const loggedToday = lsGet('cf_transactions', []).some(t => t.date === today);
+    const loggedToday = State.allTransactions.some(t => t.date === new Date().toISOString().split('T')[0]);
     if (!loggedToday && Notification.permission === 'granted') {
       new Notification('💰 Coach Finanzas', {
         body: '¿Registraste tus gastos de hoy? Solo toma 3 segundos.',
@@ -1529,9 +1528,11 @@ function scheduleReminder() {
 }
 
 // ---- EXPORTAR CSV ----
-function exportCSV() {
-  const txs  = lsGet('cf_transactions', []);
-  const cats = lsGet('cf_categories', []);
+async function exportCSV() {
+  const [txs, cats] = await Promise.all([
+    Transactions.getByMonth(State.currentMonth),
+    Categories.getAll(),
+  ]);
   if (!txs.length) { toast('No hay transacciones para exportar', 'error'); return; }
 
   const header = ['Fecha','Tipo','Categoría','Monto','Nota'];
@@ -1766,7 +1767,8 @@ async function renderReports() {
   if (rangeSelector) rangeSelector.classList.toggle('hidden', State.dateFilter !== 'month');
 
   let txsAll, cats, monthLabels = null;
-  cats = Categories.getAll();
+  cats = await Categories.getAll();
+  State.categories = cats;
 
   if (State.dateFilter === 'month') {
     // Modo histórico multi-mes: usa _reportRange meses hacia atrás desde State.currentMonth
@@ -1777,7 +1779,7 @@ async function renderReports() {
       months.push(d.toISOString().slice(0, 7));
     }
     $('report-range-label').textContent = `${fmtMonth(months[0])} – ${fmtMonth(months[months.length-1])}`;
-    const monthsData = months.map(m => Transactions.getByMonth(m));
+    const monthsData = await Promise.all(months.map(m => Transactions.getByMonth(m)));
     monthLabels = months.map(m => {
       const [y, mo] = m.split('-');
       return new Date(y, mo-1, 1).toLocaleDateString('es-PE', {month:'short', year:'2-digit'});
@@ -1849,7 +1851,7 @@ async function renderReports() {
     // Modo filtro de período: usa el rango activo (hoy, ayer, semana, rango personalizado)
     const { from, to } = getActiveDateRange();
     $('report-range-label').textContent = getDateRangeLabel();
-    txsAll = Transactions.getByDateRange(from, to);
+    txsAll = await Transactions.getByDateRange(from, to);
 
     // Destruir charts mensuales si existen
     if (State.charts.monthly)      { State.charts.monthly.destroy();      State.charts.monthly = null; }
@@ -1905,10 +1907,12 @@ async function renderReports() {
 
 // ---- EXPORTAR PDF ----
 async function exportPDF() {
-  const txs     = Transactions.getByMonth(State.currentMonth);
-  const cats    = Categories.getAll();
-  const budgets = Budgets.getAll(State.currentMonth);
-  const profile = Profiles.get();
+  const [txs, cats, budgets, profile] = await Promise.all([
+    Transactions.getByMonth(State.currentMonth),
+    Categories.getAll(),
+    Budgets.getAll(State.currentMonth),
+    Profiles.get(),
+  ]);
   const { income, expenses, savings } = calcMonthStats(txs);
   const monthLabel = fmtMonth(State.currentMonth);
 
@@ -2021,18 +2025,18 @@ function handleProfilePhoto(input) {
   if (!file) return;
   if (file.size > 2 * 1024 * 1024) { toast('La imagen no debe superar 2 MB', 'error'); return; }
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     const base64 = e.target.result;
-    Profiles.update(null, { photo: base64 });
+    await Profiles.update(null, { photo: base64 });
     renderProfileAvatar(base64);
     toast('Foto de perfil actualizada ✓', 'success');
   };
   reader.readAsDataURL(file);
 }
 
-function removeProfilePhoto() {
+async function removeProfilePhoto() {
   if (!confirm('¿Quitar la foto de perfil?')) return;
-  Profiles.update(null, { photo: null });
+  await Profiles.update(null, { photo: null });
   renderProfileAvatar(null);
   toast('Foto eliminada', 'success');
 }
@@ -2052,7 +2056,7 @@ function renderProfileAvatar(photo) {
 // ---- PROFILE PAGE ----
 async function loadProfile() {
   if (!State.user) return;
-  const profile = Profiles.get(State.user.id);
+  const profile = await Profiles.get();
 
   $('profile-name').textContent = profile?.name || State.user.email?.split('@')[0] || 'Usuario';
   $('profile-email').textContent = State.user.email || '';
@@ -2072,9 +2076,9 @@ async function loadProfile() {
   currSelect.innerHTML = Object.entries(CURRENCIES)
     .map(([code, c]) => `<option value="${code}" ${code === CURRENCY ? 'selected' : ''}>${c.name}</option>`)
     .join('');
-  currSelect.onchange = () => {
+  currSelect.onchange = async () => {
     setCurrency(currSelect.value);
-    Profiles.update(null, { currency: currSelect.value });
+    await Profiles.update(null, { currency: currSelect.value });
     loadDashboard();
     toast(`Moneda cambiada a ${CURRENCIES[currSelect.value].name} ✓`, 'success');
   };
@@ -2237,7 +2241,8 @@ async function loadQuickAddCategories(type) {
   }
 
   // Selector de cuenta (para gastos e ingresos)
-  const accounts = Accounts.getAll();
+  const accounts = State.accounts.length ? State.accounts : await Accounts.getAll();
+  State.accounts = accounts;
   State.quickAddAccountId = State.quickAddAccountId || accounts[0]?.id || '';
   const accList = $('quickadd-account-list');
   function renderAccChips() {
@@ -2286,7 +2291,7 @@ async function loadQuickAddCategories(type) {
 }
 
 function loadTransferAccountPickers() {
-  const accounts = Accounts.getAll();
+  const accounts = State.accounts;
   State.transferFromId = accounts[0]?.id ?? '';
   State.transferToId   = accounts[1]?.id ?? '';
 
@@ -2364,11 +2369,14 @@ async function saveTransaction() {
     };
     await Transactions.add(txData);
 
+    // Refrescar todas las transacciones para saldos correctos
+    State.allTransactions = await Transactions.getAll();
+
     if (!isTransfer) Categorizer.reinforce(amount, State.quickAddCategoryId);
     Streaks.update();
     checkAchievements();
 
-    const accounts = Accounts.getAll();
+    const accounts = State.accounts;
     const fromName = accounts.find(a => a.id === State.transferFromId)?.name ?? '';
     const toName   = accounts.find(a => a.id === State.transferToId)?.name ?? '';
     toast(isTransfer
@@ -2441,7 +2449,8 @@ function togglePwVisibility(inputId, btn) {
 
 // ---- INIT & EVENTS ----
 async function init() {
-  // ─ Verificar sesión ─
+  // ─ Verificar sesión con Supabase (async) ─
+  await AuthService.loadSession();
   if (!AuthService.isLoggedIn()) {
     showAuthScreen();
     setupAuthForms();
@@ -2477,10 +2486,8 @@ function setupAuthForms() {
     $('register-error').classList.add('hidden');
     try {
       if ($('reg-password').value !== $('reg-confirm').value) throw new Error('Las contraseñas no coinciden');
-      // El nombre real lo pedirá el onboarding; usamos el prefijo del email como placeholder
-      const emailVal   = $('reg-email').value;
-      const nameFallback = emailVal.split('@')[0] || 'Usuario';
-      await AuthService.register(nameFallback, emailVal, $('reg-password').value);
+      const emailVal = $('reg-email').value;
+      await AuthService.register(emailVal, $('reg-password').value);
       State.user = Auth.getUser();
       continueInit();
     } catch (err) {
@@ -2561,7 +2568,7 @@ async function continueInit() {
       case 'btn-save-name': {
         const newName = $('input-profile-name').value.trim();
         if (!newName) return;
-        Profiles.update(null, { name: newName });
+        Profiles.update(null, { name: newName }); // fire-and-forget para no bloquear UI
         $('profile-name').textContent = newName;
         $('profile-name').parentElement.style.display = 'flex';
         $('profile-name-edit').style.display = 'none';
@@ -2605,17 +2612,19 @@ async function continueInit() {
 
   // -- Goals --
   // -- Presupuestos --
-  $('btn-edit-budgets').addEventListener('click', () => {
-    const cats = Categories.getAll('expense');
-    const budgets = Budgets.getAll(State.currentMonth);
+  $('btn-edit-budgets').addEventListener('click', async () => {
+    const [cats, budgets] = await Promise.all([
+      Categories.getAll('expense'),
+      Budgets.getAll(State.currentMonth),
+    ]);
     openBudgetsModal(cats, budgets);
   });
-  $('btn-save-budgets').addEventListener('click', () => {
-    document.querySelectorAll('.budget-input').forEach(input => {
+  $('btn-save-budgets').addEventListener('click', async () => {
+    await Promise.all([...document.querySelectorAll('.budget-input')].map(input => {
       const catId = input.dataset.catid;
       const val = parseFloat(input.value) || 0;
-      Budgets.set(State.currentMonth, catId, val);
-    });
+      return Budgets.set(State.currentMonth, catId, val);
+    }));
     closeOverlay('overlay-budgets');
     toast('Presupuestos guardados ✓', 'success');
     loadCategories();
@@ -2648,7 +2657,7 @@ async function continueInit() {
     };
     try {
       if (editId) {
-        Goals.update(editId, data);
+        await Goals.update(editId, data);
         toast('Meta actualizada ✓', 'success');
       } else {
         await Goals.add({ ...data, user_id: State.user.id });
@@ -2668,8 +2677,9 @@ async function continueInit() {
     try {
       await Goals.contribute(State.selectedGoalId, amount, State.user.id, State.selectedGoalName);
       closeOverlay('overlay-contribute');
-      // Verificar si la meta se completó
-      const goal = Goals.getAll().find(g => g.id === State.selectedGoalId);
+      // Refrescar goals y verificar si se completó
+      State.goals = await Goals.getAll();
+      const goal = State.goals.find(g => g.id === State.selectedGoalId);
       if (goal && goal.current_amount >= goal.target_amount) {
         toast(`🏆 ¡Meta "${State.selectedGoalName}" completada!`, 'success');
         showConfetti();
@@ -2704,27 +2714,30 @@ async function continueInit() {
   });
 
   // -- Pago de deuda --
-  $('btn-confirm-pay-debt').addEventListener('click', () => {
+  $('btn-confirm-pay-debt').addEventListener('click', async () => {
     const amount = parseFloat($('pay-debt-amount').value);
     if (!amount || amount <= 0) { toast('Ingresa un monto válido', 'error'); return; }
-    const debt = Debts.pay(State.selectedDebtId, amount);
-    if (!debt) { toast('Error al registrar pago', 'error'); return; }
+    try {
+      const debt = await Debts.pay(State.selectedDebtId, amount);
+      if (!debt) { toast('Error al registrar pago', 'error'); return; }
 
-    if ($('pay-debt-as-tx').checked) {
-      Transactions.add({
-        user_id: State.user?.id || 'local',
-        type: 'expense',
-        amount,
-        date: today(),
-        note: `Pago deuda: ${State.selectedDebtName}`,
-        is_recurring: false,
-        category_id: null,
-      });
-    }
-    toast(`Pago de ${fmt(amount)} registrado ✓`, 'success');
-    closeOverlay('overlay-pay-debt');
-    loadDebts();
-    loadDashboard();
+      if ($('pay-debt-as-tx').checked) {
+        await Transactions.add({
+          user_id: State.user?.id || 'local',
+          type: 'expense',
+          amount,
+          date: today(),
+          note: `Pago deuda: ${State.selectedDebtName}`,
+          is_recurring: false,
+          category_id: null,
+        });
+        State.allTransactions = await Transactions.getAll();
+      }
+      toast(`Pago de ${fmt(amount)} registrado ✓`, 'success');
+      closeOverlay('overlay-pay-debt');
+      loadDebts();
+      loadDashboard();
+    } catch { toast('Error al registrar pago', 'error'); }
   });
 
   // -- Backup & Restore --
@@ -2953,7 +2966,7 @@ function showConfetti() {
 // ---- IMPORTAR CSV ----
 function importCSV(file) {
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     try {
       const lines = e.target.result.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       if (lines.length < 2) { toast('CSV vacío o sin datos', 'error'); return; }
@@ -2971,8 +2984,9 @@ function importCSV(file) {
         toast('El CSV debe tener al menos columnas: Fecha y Monto', 'error'); return;
       }
 
-      const cats = lsGet('cf_categories', []);
+      const cats = State.categories.length ? State.categories : await Categories.getAll();
       let imported = 0, skipped = 0;
+      const addPromises = [];
 
       lines.slice(1).forEach(line => {
         const cols   = line.split(',');
@@ -2986,9 +3000,11 @@ function importCSV(file) {
         const note    = noteIdx >= 0 ? (cols[noteIdx]?.trim().replace(/;/g,',') || null) : null;
         const cat     = catName ? cats.find(c => c.name.toLowerCase() === catName.toLowerCase()) : null;
 
-        Transactions.add({ user_id:'local', type, amount, date, note, is_recurring:false, category_id: cat?.id || null });
+        addPromises.push(Transactions.add({ user_id: State.user?.id, type, amount, date, note, is_recurring:false, category_id: cat?.id || null }));
         imported++;
       });
+      await Promise.all(addPromises);
+      State.allTransactions = await Transactions.getAll();
 
       toast(`${imported} transacciones importadas${skipped ? `, ${skipped} omitidas` : ''} ✓`, 'success');
       loadDashboard();
@@ -2999,7 +3015,7 @@ function importCSV(file) {
 }
 
 // ---- RESUMEN FIN DE MES ----
-function checkMonthSummary() {
+async function checkMonthSummary() {
   const currentMonth = new Date().toISOString().slice(0,7);
   const lastSeen     = lsGet('cf_last_month', null);
 
@@ -3019,8 +3035,10 @@ function checkMonthSummary() {
     return; // Más de un mes sin abrir — saltar
   }
 
-  const txs      = lsGet('cf_transactions', []);
-  const prevTxs  = txs.filter(t => t.date.startsWith(prevMonth));
+  const [prevTxs, cats] = await Promise.all([
+    Transactions.getByMonth(prevMonth),
+    Categories.getAll(),
+  ]);
   const income   = prevTxs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const expenses = prevTxs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
   const savings  = income - expenses;
@@ -3043,7 +3061,6 @@ function checkMonthSummary() {
   }
 
   // Top 3 categorías de gasto
-  const cats   = lsGet('cf_categories', []);
   const catMap = {};
   prevTxs.filter(t=>t.type==='expense').forEach(t => {
     if (t.category_id) catMap[t.category_id] = (catMap[t.category_id]||0) + t.amount;
