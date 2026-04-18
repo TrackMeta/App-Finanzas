@@ -240,7 +240,13 @@ async function showOnboarding() {
   screen.classList.remove('hidden');
 
   // Renderizar inputs de saldos de cuentas
-  const accounts = await Accounts.getAll();
+  // Intentar hasta 3 veces (el trigger de Supabase puede tardar unos instantes)
+  let accounts = [];
+  for (let i = 0; i < 3; i++) {
+    accounts = await Accounts.getAll();
+    if (accounts.length) break;
+    await new Promise(r => setTimeout(r, 800));
+  }
   State.accounts = accounts;
   $('ob-accounts-inputs').innerHTML = accounts.map(acc => `
     <div class="ob-account-row">
@@ -249,7 +255,7 @@ async function showOnboarding() {
         <p style="font-size:0.9rem;font-weight:600;">${acc.name}</p>
       </div>
       <div style="display:flex;align-items:center;gap:0.4rem;">
-        <span style="font-size:0.85rem;color:var(--text-muted);">S/</span>
+        <span style="font-size:0.85rem;color:var(--text-muted);">${CURRENCY_SYMBOL}</span>
         <input type="number" class="input ob-acc-input" data-accid="${acc.id}"
           value="0" min="0" step="0.01"
           style="width:100px;text-align:right;padding:0.4rem 0.6rem;font-size:0.95rem;" />
@@ -375,12 +381,14 @@ async function loadDashboard() {
   const allInsights = [...debtAlerts, ...insights].sort((a,b) => b.priority - a.priority);
   renderInsights($('dashboard-insights'), allInsights.slice(0, 3));
 
+  // Cargar cuentas y todas las transacciones para saldos correctos
+  [State.accounts, State.allTransactions] = await Promise.all([
+    Accounts.getAll(),
+    Transactions.getAll(),
+  ]);
+
   // Cuentas en dashboard
   renderAccountsCard();
-
-  // Actualizar State.accounts y allTransactions para saldos
-  State.accounts = await Accounts.getAll();
-  State.allTransactions = await Transactions.getAll();
 
   // Presupuestos en dashboard
   const cardBudgetsDash = $('card-budgets-dash');
@@ -405,6 +413,7 @@ async function loadDashboard() {
 
   // Últimas transacciones
   const recent = await Transactions.getRecent(5);
+  _cacheTxs(recent);
   renderTxList($('recent-transactions'), recent, true);
 }
 
@@ -551,9 +560,14 @@ function txItemHTML(tx, showDate = false) {
 let _editTxId = null;
 let _editTxRecurring = false;
 
+// Cache de txs por id — se actualiza cada vez que se renderizan listas
+const _txCache = {};
+
+function _cacheTxs(txs) { txs.forEach(t => { _txCache[t.id] = t; }); }
+
 function openEditTx(id) {
-  // Buscar en las transacciones cargadas en State
-  const tx = State.transactions.find(t => t.id === id);
+  // Buscar primero en State.transactions, luego en el cache global
+  const tx = State.transactions.find(t => t.id === id) || _txCache[id];
   if (!tx) return;
   _editTxId = id;
   _editTxRecurring = tx.is_recurring || false;
@@ -638,6 +652,7 @@ async function loadTransactions() {
   const { from, to } = getActiveDateRange();
   const txs = await Transactions.getByDateRange(from, to);
   State.transactions = txs;
+  _cacheTxs(txs);
   renderTransactionsPage(txs);
 
   // Sugerencia de recurrentes solo cuando se ve el mes actual completo
@@ -921,7 +936,7 @@ async function loadDebts() {
         <div class="debt-calc">
           <p class="text-xs font-bold text-muted">Calculadora de pago extra</p>
           <div style="display:flex;align-items:center;gap:0.5rem">
-            <span class="text-muted text-xs">S/</span>
+            <span class="text-muted text-xs">${CURRENCY_SYMBOL}</span>
             <input type="number" class="input" style="height:32px;font-size:0.8rem" value="100"
               id="extra-${d.id}" placeholder="100" oninput="updateCalc('${d.id}',${JSON.stringify(d).replace(/'/g,"\\'")})" />
             <span class="text-muted text-xs">extra/mes</span>
@@ -1089,6 +1104,7 @@ function openPayDebt(id, name, total, paid) {
 async function loadCalendar() {
   $('cal-month-label').textContent = fmtMonth(State.calMonth);
   const txs = await Transactions.getByMonth(State.calMonth);
+  _cacheTxs(txs);
   renderCalendar(txs);
 }
 
@@ -1573,7 +1589,9 @@ function renderAccountsCard() {
   }).join('');
 }
 
-function openAccountsModal() {
+async function openAccountsModal() {
+  // Refrescar cuentas antes de mostrar el modal
+  State.accounts = await Accounts.getAll();
   renderAccountsList();
   // Color picker
   const picker = $('acc-color-picker');
@@ -1643,7 +1661,7 @@ function renderAccountsList() {
         <input class="input acc-ef-name" style="flex:1;" value="${acc.name}" maxlength="20" placeholder="Nombre"/>
       </div>
       <div style="display:flex;gap:0.5rem;align-items:center;">
-        <label style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap;">Saldo base (S/)</label>
+        <label style="font-size:0.8rem;color:var(--text-muted);white-space:nowrap;">Saldo base (${CURRENCY_SYMBOL})</label>
         <input type="number" class="input acc-ef-balance" style="flex:1;" value="${acc.initial_balance ?? 0}" min="0" step="0.01"/>
       </div>
       <div class="acc-edit-colors">
@@ -2264,7 +2282,8 @@ async function loadQuickAddCategories(type) {
   renderAccChips();
 
   const cats = await Categories.getAll(type === 'income' ? 'income' : 'expense');
-  State.categories = cats;
+  // Actualizar State.categories con el filtro correcto del quickadd
+  if (!State.categories.length) State.categories = cats;
 
   const predicted = Categorizer.predict(parseFloat(State.quickAddAmount)||0);
   const defaultId = predicted || (cats[0]?.id ?? '');
@@ -2820,22 +2839,46 @@ async function continueInit() {
   setupNotifications();
 
   // -- Cerrar sesión --
-  $('btn-logout').addEventListener('click', () => {
+  $('btn-logout').addEventListener('click', async () => {
     if (confirm('¿Cerrar sesión?')) {
-      AuthService.logout();
+      try { await AuthService.logout(); } catch {}
       location.reload();
     }
   });
 
   // -- Borrar datos del usuario actual --
-  $('btn-delete-data')?.addEventListener('click', () => {
-    if (confirm('¿Borrar TODOS tus datos? Esta acción no se puede deshacer.')) {
-      const prefix = `_${State.user?.id || 'local'}`;
+  $('btn-delete-data')?.addEventListener('click', async () => {
+    if (!confirm('¿Borrar TODOS tus datos de Coach Finanzas?\n\nEsto eliminará: transacciones, categorías, cuentas, metas, deudas y presupuestos.\n\nEsta acción NO se puede deshacer.')) return;
+
+    const btn = $('btn-delete-data');
+    btn.textContent = 'Borrando…'; btn.disabled = true;
+
+    try {
+      // Eliminar todos los datos del usuario en Supabase (por orden de dependencias)
+      await Promise.all([
+        _sb.from('transactions').delete().eq('user_id', AuthService.getCurrentUserId()),
+        _sb.from('budgets').delete().eq('user_id', AuthService.getCurrentUserId()),
+        _sb.from('goals').delete().eq('user_id', AuthService.getCurrentUserId()),
+        _sb.from('debts').delete().eq('user_id', AuthService.getCurrentUserId()),
+      ]);
+      await Promise.all([
+        _sb.from('categories').delete().eq('user_id', AuthService.getCurrentUserId()),
+        _sb.from('accounts').delete().eq('user_id', AuthService.getCurrentUserId()),
+      ]);
+      await _sb.from('profiles').delete().eq('id', AuthService.getCurrentUserId());
+
+      // Limpiar localStorage del usuario
+      const uid = AuthService.getCurrentUserId();
       Object.keys(localStorage)
-        .filter(k => k.endsWith(prefix) || k === 'cf_session')
+        .filter(k => k.includes(uid) || k === 'cf_last_month')
         .forEach(k => localStorage.removeItem(k));
-      AuthService.logout();
-      location.reload();
+
+      await AuthService.logout();
+      toast('Datos eliminados. Hasta pronto 👋', 'success');
+      setTimeout(() => location.reload(), 1500);
+    } catch(e) {
+      btn.textContent = '🗑️ Borrar todos mis datos'; btn.disabled = false;
+      toast('Error al borrar datos: ' + (e.message || e), 'error');
     }
   });
 
