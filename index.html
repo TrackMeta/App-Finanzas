@@ -136,7 +136,7 @@
       <a href="#" class="nav-link" data-page="goals">🎯 Metas</a>
       <a href="#" class="nav-link" data-page="debts">💳 Deudas</a>
       <a href="#" class="nav-link" data-page="calendar">📅 Calendario</a>
-      <a href="#" class="nav-link" data-page="insights">📈 Análisis</a>
+      <a href="#" class="nav-link" data-page="categories">🏷️ Mis Categorías</a>
       <a href="#" class="nav-link" data-page="reports">📊 Reportes</a>
       <a href="#" class="nav-link" data-page="profile">👤 Perfil</a>
     </nav>
@@ -167,11 +167,12 @@
     <div id="global-date-bar" class="date-filter-bar hidden">
       <!-- Chips de período -->
       <div class="date-chips">
-        <button class="date-chip" data-filter="today"     onclick="setDateFilter('today')">Hoy</button>
+        <button class="date-chip active" data-filter="total"    onclick="setDateFilter('total')">Total</button>
+        <button class="date-chip" data-filter="month"    onclick="setDateFilter('month')">Mes</button>
+        <button class="date-chip" data-filter="week"     onclick="setDateFilter('week')">Semana</button>
+        <button class="date-chip" data-filter="today"    onclick="setDateFilter('today')">Hoy</button>
         <button class="date-chip" data-filter="yesterday" onclick="setDateFilter('yesterday')">Ayer</button>
-        <button class="date-chip" data-filter="week"      onclick="setDateFilter('week')">Esta sem.</button>
-        <button class="date-chip active" data-filter="month" onclick="setDateFilter('month')">Mes</button>
-        <button class="date-chip" data-filter="custom"    onclick="setDateFilter('custom')">📅 Rango</button>
+        <button class="date-chip" data-filter="custom"   onclick="setDateFilter('custom')">📅 Rango</button>
       </div>
       <!-- Navegador de mes (solo cuando filter=month) -->
       <div id="date-month-nav" class="date-month-nav">
@@ -249,7 +250,7 @@
         <div class="card" id="card-budgets-dash" style="display:none;">
           <div class="card-header">
             <h3 class="card-title">💰 Presupuestos del mes</h3>
-            <a href="#" class="link text-sm" data-page="insights">Configurar →</a>
+            <a href="#" class="link text-sm" data-page="categories">Configurar →</a>
           </div>
           <div class="card-body" id="dash-budgets-list" style="display:flex;flex-direction:column;gap:0.25rem;padding-bottom:0.5rem;"></div>
         </div>
@@ -455,15 +456,15 @@
       </div>
     </div>
 
-    <!-- PAGE: INSIGHTS -->
-    <div id="page-insights" class="page hidden">
+    <!-- PAGE: CATEGORIES -->
+    <div id="page-categories" class="page hidden">
       <div class="page-inner">
-        <h1 class="page-title">Análisis financiero</h1>
+        <h1 class="page-title">Mis Categorías</h1>
 
         <!-- Presupuestos -->
         <div class="card">
           <div class="card-header">
-            <h3 class="card-title">💰 Presupuestos del mes</h3>
+            <h3 class="card-title">💰 Presupuestos</h3>
             <button id="btn-edit-budgets" class="btn btn-sm btn-ghost">Editar</button>
           </div>
           <div class="card-body">
@@ -477,6 +478,15 @@
           <div class="card-body" id="proj-body">
             <p class="text-muted text-sm text-center">Cargando…</p>
           </div>
+        </div>
+
+        <!-- Lista de categorías -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">🏷️ Categorías</h3>
+            <button id="btn-new-category" class="btn btn-sm btn-ghost">+ Nueva</button>
+          </div>
+          <div class="card-body" id="categories-list" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
         </div>
       </div>
     </div>
@@ -505,41 +515,6 @@
           <button id="btn-remove-photo" class="btn btn-xs btn-ghost text-muted hidden"
             style="font-size:0.72rem;margin-top:-0.25rem;"
             onclick="removeProfilePhoto()">✕ Quitar foto</button>
-        </div>
-
-        <!-- Racha -->
-        <div class="card">
-          <div class="card-body flex-row gap-4">
-            <div class="streak-icon">🔥</div>
-            <div class="flex-1">
-              <p id="streak-current" class="text-2xl font-bold text-amber">0</p>
-              <p class="text-muted text-xs">días consecutivos</p>
-            </div>
-            <div class="text-right">
-              <p id="streak-longest" class="font-bold">0</p>
-              <p class="text-muted text-xs">récord</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Logros -->
-        <div class="card">
-          <div class="card-header">
-            <h3 class="card-title">🏆 Logros</h3>
-            <span id="achievements-count" class="text-muted text-sm"></span>
-          </div>
-          <div class="card-body">
-            <div id="achievements-grid" class="achievements-grid"></div>
-          </div>
-        </div>
-
-        <!-- Categorías -->
-        <div class="card">
-          <div class="card-header">
-            <h3 class="card-title">🏷️ Mis categorías</h3>
-            <button id="btn-new-category" class="btn btn-sm btn-ghost">+ Nueva</button>
-          </div>
-          <div class="card-body" id="categories-list" style="display:flex;flex-direction:column;gap:0.5rem;"></div>
         </div>
 
         <!-- Config -->
@@ -638,9 +613,9 @@
           <span class="more-menu-icon">💰</span>
           <span>Cuentas</span>
         </button>
-        <button class="more-menu-item" data-page="insights">
-          <span class="more-menu-icon">📈</span>
-          <span>Análisis</span>
+        <button class="more-menu-item" data-page="categories">
+          <span class="more-menu-icon">🏷️</span>
+          <span>Categorías</span>
         </button>
         <button class="more-menu-item" data-page="calendar">
           <span class="more-menu-icon">📅</span>

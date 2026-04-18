@@ -26,7 +26,7 @@ const State = {
   txSearch: '',
   quickAddAccountId: '',
   // Filtro global de fechas
-  dateFilter: 'month',      // 'today'|'yesterday'|'week'|'month'|'custom'
+  dateFilter: 'total',      // 'total'|'today'|'yesterday'|'week'|'month'|'custom'
   globalDateFrom: '',
   globalDateTo: '',
 };
@@ -52,6 +52,8 @@ function today() { return new Date().toISOString().split('T')[0]; }
 function getActiveDateRange() {
   const t = today();
   switch (State.dateFilter) {
+    case 'total':
+      return { from: '2000-01-01', to: t };
     case 'today':
       return { from: t, to: t };
     case 'yesterday': {
@@ -75,6 +77,7 @@ function getActiveDateRange() {
 
 function getDateRangeLabel() {
   switch (State.dateFilter) {
+    case 'total':     return 'Todo el tiempo';
     case 'today':     return 'Hoy';
     case 'yesterday': return 'Ayer';
     case 'week': {
@@ -158,7 +161,7 @@ function reloadCurrentPage() {
   const page = active.id.replace('page-', '');
   if (page === 'dashboard')    loadDashboard();
   if (page === 'transactions') loadTransactions();
-  if (page === 'insights')     loadInsights();
+  if (page === 'categories')   loadCategories();
   if (page === 'accounts')     loadAccountsPage();
   if (page === 'reports')      renderReports();
 }
@@ -174,22 +177,22 @@ function navigate(page) {
   });
 
   // Barra de filtro de fechas: visible en páginas financieras principales
-  const showDateBar = ['dashboard','transactions','insights','accounts','reports'].includes(page);
+  const showDateBar = ['dashboard','transactions','categories','accounts','reports'].includes(page);
   const dateBar = $('global-date-bar');
   if (dateBar) {
     dateBar.classList.toggle('hidden', !showDateBar);
     if (showDateBar) updateDateBar();
   }
 
-  if (page === 'dashboard') loadDashboard();
+  if (page === 'dashboard')    loadDashboard();
   if (page === 'transactions') loadTransactions();
-  if (page === 'goals') loadGoals();
-  if (page === 'debts') loadDebts();
-  if (page === 'calendar') loadCalendar();
-  if (page === 'insights') loadInsights();
-  if (page === 'reports')   loadReports();
-  if (page === 'profile')   loadProfile();
-  if (page === 'accounts')  loadAccountsPage();
+  if (page === 'goals')        loadGoals();
+  if (page === 'debts')        loadDebts();
+  if (page === 'calendar')     loadCalendar();
+  if (page === 'categories')   loadCategories();
+  if (page === 'reports')      loadReports();
+  if (page === 'profile')      loadProfile();
+  if (page === 'accounts')     loadAccountsPage();
 }
 
 // ---- SHOW APP ----
@@ -1181,7 +1184,7 @@ function openBudgetsModal(cats, budgets) {
   openOverlay('overlay-budgets');
 }
 
-async function loadInsights() {
+async function loadCategories() {
   const { from, to } = getActiveDateRange();
 
   const [txs, cats] = await Promise.all([
@@ -1191,18 +1194,21 @@ async function loadInsights() {
   State.transactions = txs;
   State.categories   = cats;
 
-  // Presupuestos (siempre por mes del período activo)
-  const budgetMonth = from.slice(0,7);
+  // Presupuestos — siempre por mes actual (o mes del período si filter=month)
+  const budgetMonth = State.dateFilter === 'month' ? State.currentMonth : new Date().toISOString().slice(0,7);
   const budgets = Budgets.getAll(budgetMonth);
   renderBudgetsList(txs, cats, budgets);
 
-  // Proyección / Resumen de período
+  // Proyección / Resumen
   const thisMonthKey = new Date().toISOString().slice(0,7);
   const isPastPeriod = (State.dateFilter === 'month' && State.currentMonth < thisMonthKey)
-                    || (State.dateFilter !== 'month' && to < today());
+                    || (!['month','total'].includes(State.dateFilter) && to < today());
   const incomeTotal  = txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const expTotal     = txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
   renderProjection(txs, isPastPeriod, incomeTotal, expTotal);
+
+  // Categorías
+  renderCategoriesList();
 }
 
 function renderScore(score) {
@@ -2013,11 +2019,7 @@ function renderProfileAvatar(photo) {
 // ---- PROFILE PAGE ----
 async function loadProfile() {
   if (!State.user) return;
-  const [profile, streak, achievements] = await Promise.all([
-    Profiles.get(State.user.id),
-    Streaks.get(State.user.id),
-    Achievements.getAll(State.user.id)
-  ]);
+  const profile = Profiles.get(State.user.id);
 
   $('profile-name').textContent = profile?.name || State.user.email?.split('@')[0] || 'Usuario';
   $('profile-email').textContent = State.user.email || '';
@@ -2031,32 +2033,6 @@ async function loadProfile() {
     $('profile-badge').textContent = badges[profile.financial_profile] || '';
     $('profile-badge').classList.remove('hidden');
   }
-
-  if (streak) {
-    $('streak-current').textContent = streak.current_streak;
-    $('streak-longest').textContent = streak.longest_streak;
-  }
-
-  const ACHIEVEMENTS = [
-    {type:'first_transaction', label:'Primer registro', icon:'📝'},
-    {type:'first_goal', label:'Primera meta', icon:'🎯'},
-    {type:'streak_7', label:'Racha 7 días', icon:'🔥'},
-    {type:'streak_30', label:'Racha 30 días', icon:'💥'},
-    {type:'streak_100', label:'100 días', icon:'⚡'},
-    {type:'budget_month', label:'Mes bajo presupuesto', icon:'✅'},
-    {type:'goal_completed', label:'Meta lograda', icon:'🏆'},
-    {type:'savings_25', label:'Ahorrador élite', icon:'💎'},
-  ];
-
-  $('achievements-count').textContent = `${achievements.length}/${ACHIEVEMENTS.length}`;
-  $('achievements-grid').innerHTML = ACHIEVEMENTS.map(a=>`
-    <div class="achievement-item" title="${a.label}">
-      <div class="achievement-icon ${achievements.includes(a.type)?'unlocked':'locked'}">${a.icon}</div>
-      <span class="achievement-label">${a.label}</span>
-    </div>`).join('');
-
-  // Categorías
-  renderCategoriesList();
 
   // Selector de moneda
   const currSelect = $('currency-select');
@@ -2475,7 +2451,7 @@ async function init() {
     });
     closeOverlay('overlay-budgets');
     toast('Presupuestos guardados ✓', 'success');
-    loadInsights();
+    loadCategories();
   });
 
   $('btn-new-goal').addEventListener('click', () => {
