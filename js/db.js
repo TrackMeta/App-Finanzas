@@ -137,6 +137,11 @@ const Goals = {
     });
   },
 
+  update(id, changes) {
+    const all = lsGet('cf_goals', []);
+    const i = all.findIndex(g => g.id === id);
+    if (i >= 0) { all[i] = { ...all[i], ...changes }; lsSet('cf_goals', all); return all[i]; }
+  },
   remove(id) { lsSet('cf_goals', lsGet('cf_goals', []).filter(g => g.id !== id)); }
 };
 
@@ -151,6 +156,21 @@ const Debts = {
     return d;
   },
 
+  pay(id, amount) {
+    const all = lsGet('cf_debts', []);
+    const i = all.findIndex(d => d.id === id);
+    if (i < 0) return null;
+    all[i].paid = Math.min((all[i].paid || 0) + amount, all[i].total);
+    all[i].paid_installments = (all[i].paid_installments || 0) + 1;
+    // Avanzar fecha de próximo pago ~1 mes
+    if (all[i].next_payment_date) {
+      const d = new Date(all[i].next_payment_date);
+      d.setMonth(d.getMonth() + 1);
+      all[i].next_payment_date = d.toISOString().split('T')[0];
+    }
+    lsSet('cf_debts', all);
+    return all[i];
+  },
   remove(id) { lsSet('cf_debts', lsGet('cf_debts', []).filter(d => d.id !== id)); }
 };
 
@@ -184,15 +204,20 @@ const Accounts = {
   remove(id) {
     lsSet('cf_accounts', lsGet('cf_accounts', []).filter(a => a.id !== id));
   },
-  // Saldo = saldo_inicial + transferencias recibidas - transferencias enviadas
+  // Saldo = saldo_inicial + ingresos − gastos + transferencias
   getBalance(id) {
     const acc = this.getAll().find(a => a.id === id);
     const initial = acc?.initial_balance || 0;
     const txs = lsGet('cf_transactions', []);
     return txs.reduce((bal, t) => {
-      if (t.type !== 'transfer') return bal;
-      if (t.to_account   === id) return bal + t.amount;
-      if (t.from_account === id) return bal - t.amount;
+      if (t.type === 'transfer') {
+        if (t.to_account   === id) return bal + t.amount;
+        if (t.from_account === id) return bal - t.amount;
+      }
+      if (t.account_id === id) {
+        if (t.type === 'income')  return bal + t.amount;
+        if (t.type === 'expense') return bal - t.amount;
+      }
       return bal;
     }, initial);
   }

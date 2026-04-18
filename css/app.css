@@ -1168,3 +1168,32 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   border-radius: 12px; margin-bottom: 0.25rem;
 }
 .acc-edit-colors { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+/* =============================================
+   CHIP DE CUENTA (QuickAdd)
+============================================= */
+.acc-chip {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.3rem 0.7rem; border-radius: 99px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-secondary);
+  font-size: 0.78rem; font-weight: 500;
+  white-space: nowrap; cursor: pointer;
+  transition: all 0.15s; flex-shrink: 0;
+  color: var(--text-muted);
+}
+.acc-chip.selected { font-weight: 700; }
+.acc-chip:active { transform: scale(0.95); }
+
+/* =============================================
+   BANNER RECURRENTES PENDIENTES
+============================================= */
+.recurring-banner {
+  background: var(--amber-dim, #F59E0B18);
+  border: 1px solid var(--amber, #F59E0B);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.875rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}

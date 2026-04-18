@@ -23,6 +23,9 @@ const State = {
   txFilterType: 'all',
   txCatFilter: '',
   txSearch: '',
+  quickAddAccountId: '',
+  selectedDebtId: null,
+  selectedDebtName: '',
 };
 
 // ---- UTILS ----
@@ -430,6 +433,54 @@ async function loadTransactions() {
   const txs = await Transactions.getByMonth(State.currentMonth);
   State.transactions = txs;
   renderTransactionsPage(txs);
+
+  // Sugerencia de recurrentes al abrir el mes actual
+  checkRecurringSuggestion(txs);
+}
+
+function checkRecurringSuggestion(currentTxs) {
+  const banner = $('recurring-banner');
+  if (!banner) return;
+
+  // Solo mostrar en el mes actual
+  if (State.currentMonth !== new Date().toISOString().slice(0, 7)) {
+    banner.classList.add('hidden'); return;
+  }
+
+  // Recurrentes del mes anterior que aún no están este mes
+  const prevMonth = getPrevMonth(State.currentMonth);
+  const prevTxs = lsGet('cf_transactions', [])
+    .filter(t => t.date >= prevMonth + '-01' && t.date <= prevMonth + '-31' && t.is_recurring);
+
+  const thisMonthCatIds = new Set(currentTxs.filter(t => t.is_recurring).map(t => t.category_id));
+  const pending = prevTxs.filter(t => !thisMonthCatIds.has(t.category_id));
+
+  if (!pending.length) { banner.classList.add('hidden'); return; }
+
+  banner.classList.remove('hidden');
+  $('recurring-banner-text').textContent =
+    `🔁 Tienes ${pending.length} gasto${pending.length > 1 ? 's' : ''} fijo${pending.length > 1 ? 's' : ''} del mes anterior sin registrar`;
+
+  $('recurring-banner-btn').onclick = () => {
+    pending.forEach(t => {
+      Transactions.add({
+        user_id: t.user_id || 'local',
+        type: t.type,
+        amount: t.amount,
+        date: today(),
+        note: t.note,
+        is_recurring: true,
+        category_id: t.category_id,
+        account_id: t.account_id || null,
+      });
+    });
+    toast(`${pending.length} gasto${pending.length > 1 ? 's' : ''} fijo${pending.length > 1 ? 's' : ''} agregado${pending.length > 1 ? 's' : ''} ✓`, 'success');
+    banner.classList.add('hidden');
+    loadTransactions();
+    loadDashboard();
+  };
+
+  $('recurring-banner-close').onclick = () => banner.classList.add('hidden');
 }
 
 function renderTransactionsPage(txs) {
@@ -547,6 +598,7 @@ async function loadGoals() {
         ${!done&&daysLeft>0?`<p class="goal-daily">📌 Necesitas <strong>${fmt(daily)}/día</strong> para lograrlo</p>`:''}
         <div class="goal-actions">
           ${!done?`<button class="btn btn-primary btn-sm flex-1" style="background:${g.color}" onclick="openContribute('${g.id}','${g.name}')">+ Aportar</button>`:''}
+          <button class="btn btn-sm btn-ghost" onclick="openEditGoal('${g.id}')">✏️</button>
           <button class="btn btn-danger btn-sm" onclick="deleteGoal('${g.id}')">🗑</button>
         </div>
       </div>`;
@@ -565,6 +617,29 @@ async function deleteGoal(id) {
   if (!confirm('¿Eliminar esta meta?')) return;
   try { await Goals.remove(id); toast('Meta eliminada'); loadGoals(); }
   catch { toast('Error', 'error'); }
+}
+
+function openEditGoal(id) {
+  const goal = Goals.getAll().find(g => g.id === id);
+  if (!goal) return;
+
+  // Configurar modal en modo edición
+  $('goal-edit-id').value = id;
+  $('goal-modal-title').textContent = 'Editar meta';
+  $('btn-goal-submit').textContent = 'Guardar cambios';
+
+  // Precargar valores
+  $('goal-name').value    = goal.name;
+  $('goal-target').value  = goal.target_amount;
+  $('goal-current').value = goal.current_amount;
+  $('goal-deadline').value = goal.deadline;
+
+  // Precargar ícono y color
+  goalSelectedIcon  = goal.icon  || '🎯';
+  goalSelectedColor = goal.color || '#10B981';
+  initGoalForm();   // re-renderiza los pickers con los valores correctos
+
+  openOverlay('overlay-goal');
 }
 
 // ---- DEBTS PAGE ----
@@ -615,7 +690,10 @@ async function loadDebts() {
           </div>
           <div id="calc-result-${d.id}" class="calc-result hidden"></div>
         </div>
-        <button class="btn btn-danger btn-sm" onclick="deleteDebt('${d.id}')">🗑 Eliminar</button>
+        <div style="display:flex;gap:0.5rem;margin-top:0.25rem;">
+          <button class="btn btn-primary btn-sm flex-1" onclick="openPayDebt('${d.id}','${d.name.replace(/'/g,"\\'")}',${d.total},${d.paid})">💳 Registrar pago</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteDebt('${d.id}')">🗑</button>
+        </div>
       </div>`;
   }).join('');
 }
@@ -636,6 +714,16 @@ async function deleteDebt(id) {
   if (!confirm('¿Eliminar esta deuda?')) return;
   try { await Debts.remove(id); toast('Deuda eliminada'); loadDebts(); }
   catch { toast('Error', 'error'); }
+}
+
+function openPayDebt(id, name, total, paid) {
+  State.selectedDebtId   = id;
+  State.selectedDebtName = name;
+  $('pay-debt-title').textContent = `Pagar: ${name}`;
+  const remaining = total - paid;
+  $('pay-debt-info').textContent  = `Pendiente: ${fmt(remaining)} de ${fmt(total)}`;
+  $('pay-debt-amount').value      = '';
+  openOverlay('overlay-pay-debt');
 }
 
 // ---- CALENDAR PAGE ----
@@ -1564,6 +1652,7 @@ function openQuickAdd(type = 'expense') {
   State.quickAddRecurring = false;
   State.transferFromId = '';
   State.transferToId = '';
+  State.quickAddAccountId = '';
   $('amount-value').textContent = '0';
   $('quickadd-note').classList.add('hidden');
   $('btn-add-note').classList.remove('hidden');
@@ -1584,6 +1673,7 @@ async function loadQuickAddCategories(type) {
   // Mostrar panel correcto
   $('quickadd-categories').classList.toggle('hidden', isTransfer);
   $('transfer-panel').classList.toggle('hidden', !isTransfer);
+  $('quickadd-account-row').classList.toggle('hidden', isTransfer);
   // Ocultar recurrente en transferencias
   $('btn-toggle-recurring').parentElement.style.display = isTransfer ? 'none' : '';
 
@@ -1591,6 +1681,28 @@ async function loadQuickAddCategories(type) {
     loadTransferAccountPickers();
     return;
   }
+
+  // Selector de cuenta (para gastos e ingresos)
+  const accounts = Accounts.getAll();
+  State.quickAddAccountId = State.quickAddAccountId || accounts[0]?.id || '';
+  const accList = $('quickadd-account-list');
+  function renderAccChips() {
+    accList.innerHTML = accounts.map(acc => {
+      const sel = acc.id === State.quickAddAccountId;
+      return `<button type="button" class="acc-chip ${sel ? 'selected' : ''}"
+        data-accid="${acc.id}"
+        style="${sel ? `border-color:${acc.color};color:${acc.color};background:${acc.color}18;` : ''}">
+        ${acc.icon} ${acc.name}
+      </button>`;
+    }).join('');
+    accList.querySelectorAll('.acc-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        State.quickAddAccountId = btn.dataset.accid;
+        renderAccChips();
+      });
+    });
+  }
+  renderAccChips();
 
   const cats = await Categories.getAll(type === 'income' ? 'income' : 'expense');
   State.categories = cats;
@@ -1692,6 +1804,7 @@ async function saveTransaction() {
       note:         $('quickadd-note').value || null,
       is_recurring: isTransfer ? false : State.quickAddRecurring,
       category_id:  isTransfer ? null : State.quickAddCategoryId,
+      account_id:   isTransfer ? null : (State.quickAddAccountId || null),
       from_account: isTransfer ? State.transferFromId  : null,
       to_account:   isTransfer ? State.transferToId    : null,
     };
@@ -1872,25 +1985,38 @@ async function init() {
     loadInsights();
   });
 
-  $('btn-new-goal').addEventListener('click', () => { initGoalForm(); openOverlay('overlay-goal'); });
+  $('btn-new-goal').addEventListener('click', () => {
+    $('goal-edit-id').value = '';
+    $('goal-modal-title').textContent = 'Nueva meta de ahorro';
+    $('btn-goal-submit').textContent = 'Crear meta';
+    goalSelectedIcon = '🎯'; goalSelectedColor = '#10B981';
+    initGoalForm();
+    openOverlay('overlay-goal');
+  });
   $('form-goal').addEventListener('submit', async e => {
     e.preventDefault();
+    const editId = $('goal-edit-id').value;
+    const data = {
+      name: $('goal-name').value,
+      target_amount: parseFloat($('goal-target').value),
+      current_amount: parseFloat($('goal-current').value)||0,
+      deadline: $('goal-deadline').value,
+      icon: goalSelectedIcon,
+      color: goalSelectedColor
+    };
     try {
-      await Goals.add({
-        user_id: State.user.id,
-        name: $('goal-name').value,
-        target_amount: parseFloat($('goal-target').value),
-        current_amount: parseFloat($('goal-current').value)||0,
-        deadline: $('goal-deadline').value,
-        icon: goalSelectedIcon,
-        color: goalSelectedColor
-      });
-      toast('¡Meta creada!', 'success');
-      checkAchievements();
+      if (editId) {
+        Goals.update(editId, data);
+        toast('Meta actualizada ✓', 'success');
+      } else {
+        await Goals.add({ ...data, user_id: State.user.id });
+        toast('¡Meta creada!', 'success');
+        checkAchievements();
+      }
       closeOverlay('overlay-goal');
       loadGoals();
       e.target.reset();
-    } catch { toast('Error al crear meta', 'error'); }
+    } catch { toast(editId ? 'Error al actualizar' : 'Error al crear meta', 'error'); }
   });
 
   // -- Contribute --
@@ -1925,6 +2051,38 @@ async function init() {
       loadDebts();
       e.target.reset();
     } catch { toast('Error al registrar', 'error'); }
+  });
+
+  // -- Pago de deuda --
+  $('btn-confirm-pay-debt').addEventListener('click', () => {
+    const amount = parseFloat($('pay-debt-amount').value);
+    if (!amount || amount <= 0) { toast('Ingresa un monto válido', 'error'); return; }
+    const debt = Debts.pay(State.selectedDebtId, amount);
+    if (!debt) { toast('Error al registrar pago', 'error'); return; }
+
+    if ($('pay-debt-as-tx').checked) {
+      Transactions.add({
+        user_id: State.user?.id || 'local',
+        type: 'expense',
+        amount,
+        date: today(),
+        note: `Pago deuda: ${State.selectedDebtName}`,
+        is_recurring: false,
+        category_id: null,
+      });
+    }
+    toast(`Pago de ${fmt(amount)} registrado ✓`, 'success');
+    closeOverlay('overlay-pay-debt');
+    loadDebts();
+    loadDashboard();
+  });
+
+  // -- Backup & Restore --
+  $('btn-backup').addEventListener('click', backupData);
+  $('input-restore').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) restoreData(file);
+    e.target.value = '';
   });
 
   // -- Close modals --
@@ -2031,6 +2189,46 @@ async function init() {
       navigate(link.dataset.page);
     }
   });
+}
+
+// ---- BACKUP / RESTORE ----
+function backupData() {
+  const KEYS = [
+    'cf_profile','cf_categories','cf_cats_init',
+    'cf_transactions','cf_goals','cf_debts',
+    'cf_accounts','cf_accs_init','cf_streaks',
+    'cf_achievements','cf_onboarding_done',
+  ];
+  // Incluir también presupuestos (múltiples claves cf_budgets_*)
+  Object.keys(localStorage).filter(k => k.startsWith('cf_budgets_')).forEach(k => KEYS.push(k));
+
+  const data = {};
+  KEYS.forEach(k => { const v = localStorage.getItem(k); if (v !== null) data[k] = JSON.parse(v); });
+
+  const json  = JSON.stringify({ version: 1, date: new Date().toISOString(), data }, null, 2);
+  const blob  = new Blob([json], { type: 'application/json' });
+  const url   = URL.createObjectURL(blob);
+  const a     = document.createElement('a');
+  a.href      = url;
+  a.download  = `finanzas_backup_${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Copia de seguridad descargada ✓', 'success');
+}
+
+function restoreData(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const backup = JSON.parse(e.target.result);
+      if (!backup.data || backup.version !== 1) { toast('Archivo inválido', 'error'); return; }
+      if (!confirm(`¿Restaurar copia del ${new Date(backup.date).toLocaleDateString('es-PE')}?\nSe sobreescribirán los datos actuales.`)) return;
+      Object.entries(backup.data).forEach(([k, v]) => lsSet(k, v));
+      toast('Datos restaurados ✓', 'success');
+      setTimeout(() => location.reload(), 1200);
+    } catch { toast('Error al leer el archivo', 'error'); }
+  };
+  reader.readAsText(file);
 }
 
 // Arrancar la app
