@@ -552,13 +552,37 @@ html, body {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
 }
-.score-grade { font-size: 1.75rem; font-weight: 800; }
-.score-value { font-size: 0.65rem; color: var(--text-muted); }
+.score-grade { font-size: 1.75rem; font-weight: 800; line-height: 1; }
+.score-grade-label { font-size: 0.6rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 1px; }
+.score-value { font-size: 0.65rem; color: var(--text-muted); margin-top: 2px; }
 .score-breakdown { flex: 1; display: flex; flex-direction: column; gap: 0.625rem; min-width: 160px; }
 .score-row { display: flex; flex-direction: column; gap: 3px; }
-.score-row-header { display: flex; justify-content: space-between; font-size: 0.7rem; }
+.score-row-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.7rem; }
 .score-bar-bg { background: var(--bg-secondary); height: 6px; border-radius: 99px; overflow: hidden; }
 .score-bar-fill { height: 100%; border-radius: 99px; background: var(--emerald); transition: width 0.6s ease; }
+.score-na { font-size: 0.65rem; color: var(--primary); cursor: pointer; text-decoration: underline dotted; }
+
+/* =============================================
+   PROYECCIÓN
+============================================= */
+.proj-stats { display: flex; gap: 1rem; margin-bottom: 0.875rem; }
+.proj-stat { flex: 1; }
+.proj-stat-label { font-size: 0.7rem; color: var(--text-muted); display: block; margin-bottom: 0.15rem; }
+.proj-stat-value { font-size: 1rem; font-weight: 700; }
+.proj-bar-wrap { margin-bottom: 0.75rem; }
+.proj-bar-track {
+  display: flex; height: 10px; border-radius: 99px;
+  background: var(--bg-secondary); overflow: hidden;
+}
+.proj-bar-spent     { background: var(--rose);    height: 100%; transition: width 0.5s ease; }
+.proj-bar-projected { background: var(--rose);    height: 100%; opacity: 0.35; transition: width 0.5s ease; }
+.proj-bar-labels    { display: flex; justify-content: space-between; margin-top: 0.3rem; }
+.proj-summary {
+  border-radius: var(--radius-sm); padding: 0.6rem 0.75rem;
+  font-size: 0.82rem; text-align: center;
+}
+.proj-ok   { background: var(--emerald-dim); color: var(--emerald); }
+.proj-warn { background: var(--rose-dim);    color: var(--rose); }
 
 /* =============================================
    SIMULADOR

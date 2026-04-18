@@ -461,7 +461,10 @@
 
         <!-- Score -->
         <div class="card">
-          <div class="card-header"><h3 class="card-title">Score financiero</h3></div>
+          <div class="card-header">
+            <h3 class="card-title">Salud financiera</h3>
+            <span class="text-xs text-muted">4 factores · máx 100 pts</span>
+          </div>
           <div class="card-body">
             <div class="score-container">
               <div class="score-gauge">
@@ -473,7 +476,8 @@
                 </svg>
                 <div class="score-center">
                   <span id="score-grade" class="score-grade">-</span>
-                  <span id="score-value" class="score-value">0/100</span>
+                  <span id="score-grade-label" class="score-grade-label"></span>
+                  <span id="score-value" class="score-value">0 pts</span>
                 </div>
               </div>
               <div class="score-breakdown" id="score-breakdown"></div>
@@ -495,19 +499,9 @@
 
         <!-- Proyección -->
         <div class="card">
-          <div class="card-header"><h3 class="card-title">Proyección fin de mes</h3></div>
-          <div class="card-body">
-            <div class="stats-grid">
-              <div class="stat-card expense">
-                <p class="stat-label">Gastos proyectados</p>
-                <p class="stat-value" id="proj-expenses">S/ 0</p>
-              </div>
-              <div class="stat-card" id="proj-savings-card">
-                <p class="stat-label">Ahorro estimado</p>
-                <p class="stat-value" id="proj-savings">S/ 0</p>
-              </div>
-            </div>
-            <p id="proj-confidence" class="text-muted text-sm text-center mt-2"></p>
+          <div class="card-header"><h3 class="card-title">📈 Proyección de fin de mes</h3></div>
+          <div class="card-body" id="proj-body">
+            <p class="text-muted text-sm text-center">Cargando…</p>
           </div>
         </div>
 

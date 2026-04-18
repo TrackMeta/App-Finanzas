@@ -170,16 +170,27 @@ function calcScore(transactions, goals, budgets, streak) {
     consistencyScore = Math.min((Math.min(streak.current_streak, dayOfMonth) / dayOfMonth) * 25, 25);
   }
 
-  // Presupuestos (20 pts)
-  let budgetScore = budgets.length === 0 ? 20 :
-    Math.min((budgets.filter(b => b.monthly_limit > 0 && b.current_spent <= b.monthly_limit).length / Math.max(budgets.length,1)) * 20, 20);
+  // Presupuestos (20 pts) — 0 si no hay configurados (sin presupuestos = sin puntos)
+  let budgetScore = 0;
+  if (budgets.length > 0) {
+    budgetScore = Math.min(
+      (budgets.filter(b => b.monthly_limit > 0 && b.current_spent <= b.monthly_limit).length / budgets.length) * 20,
+      20
+    );
+  }
 
-  // Metas (15 pts)
-  let goalsScore = goals.length === 0 ? 7 :
-    Math.min((goals.reduce((s,g) => s + Math.min(g.current_amount/g.target_amount,1), 0) / goals.length) * 15, 15);
+  // Metas (15 pts) — 0 si no hay metas configuradas
+  let goalsScore = 0;
+  if (goals.length > 0) {
+    goalsScore = Math.min(
+      (goals.reduce((s,g) => s + Math.min(g.current_amount/g.target_amount,1), 0) / goals.length) * 15,
+      15
+    );
+  }
 
   const total = Math.round(savingsScore + consistencyScore + budgetScore + goalsScore);
   const grade = total>=90?'S':total>=80?'A':total>=70?'B':total>=60?'C':total>=45?'D':'F';
+  const gradeLabel = { S:'Elite', A:'Excelente', B:'Bueno', C:'Regular', D:'Atención', F:'Crítico' };
   const messages = {
     S:'¡Eres un maestro financiero!', A:'Excelente manejo financiero.',
     B:'Buen camino. Pequeños ajustes te llevarán al nivel A.',
@@ -187,7 +198,10 @@ function calcScore(transactions, goals, budgets, streak) {
     D:'Atención: tus finanzas necesitan más disciplina.',
     F:'Empieza por registrar todo esta semana.'
   };
-  return { total, grade, message: messages[grade],
+  return {
+    total, grade, gradeLabel: gradeLabel[grade], message: messages[grade],
+    hasBudgets: budgets.length > 0,
+    hasGoals: goals.length > 0,
     breakdown: {
       savings: Math.round(savingsScore), consistency: Math.round(consistencyScore),
       budgets: Math.round(budgetScore), goals: Math.round(goalsScore)

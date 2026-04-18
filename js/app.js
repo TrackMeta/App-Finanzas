@@ -977,7 +977,16 @@ function selectCalDay(dateStr, txs) {
 function renderBudgetsList(txs, cats, budgets) {
   const container = $('budgets-list');
   if (!budgets.length) {
-    container.innerHTML = '<p class="text-muted text-sm">Sin presupuestos. Haz clic en "Editar" para configurar.</p>';
+    container.innerHTML = `
+      <div style="text-align:center;padding:0.75rem 0;">
+        <p class="text-muted text-sm">Sin presupuestos configurados</p>
+        <p class="text-xs text-muted" style="margin-top:0.25rem;margin-bottom:0.75rem;">
+          Establece un límite por categoría para controlar tus gastos
+        </p>
+        <button class="btn btn-sm btn-primary" onclick="document.getElementById('btn-edit-budgets').click()">
+          + Configurar presupuestos
+        </button>
+      </div>`;
     return;
   }
   const expCats = cats.filter(c => c.type === 'expense');
@@ -1049,12 +1058,12 @@ async function loadInsights() {
   const score  = calcScore(txs, Goals.getAll(), budgets, streak);
   renderScore(score);
 
-  // Proyección
-  const proj = projectEndOfMonth(txs);
-  $('proj-expenses').textContent    = fmt(proj.projectedExpenses);
-  $('proj-savings').textContent     = fmt(Math.abs(proj.projectedSavings)) + (proj.projectedSavings < 0 ? ' (déficit)' : '');
-  $('proj-savings-card').className  = 'stat-card ' + (proj.projectedSavings >= 0 ? 'savings' : 'expense');
-  $('proj-confidence').textContent  = `Confianza: ${proj.confidence} (${new Date().getDate()} días de datos)`;
+  // Proyección / Resumen de mes
+  const thisMonthKey = new Date().toISOString().slice(0,7);
+  const isPastMonth  = State.currentMonth < thisMonthKey;
+  const incomeTotal  = txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const expTotal     = txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  renderProjection(txs, isPastMonth, incomeTotal, expTotal);
 
   // Gráfico semanal
   renderWeeklyChart(txs);
@@ -1076,25 +1085,106 @@ function renderScore(score) {
 
   $('score-grade').textContent = score.grade;
   $('score-grade').style.color = color;
-  $('score-value').textContent = `${score.total}/100`;
+  $('score-grade-label').textContent = score.gradeLabel || '';
+  $('score-value').textContent = `${score.total} pts`;
   $('score-message').textContent = score.message;
 
+  const items = [
+    { label:'💰 Ahorro',      val:score.breakdown.savings,      max:40, active:true },
+    { label:'🔥 Constancia',  val:score.breakdown.consistency,  max:25, active:true },
+    { label:'📋 Presupuestos',val:score.breakdown.budgets,      max:20, active:score.hasBudgets,
+      actionFn:"document.getElementById('btn-edit-budgets').click()" },
+    { label:'⭐ Metas',       val:score.breakdown.goals,        max:15, active:score.hasGoals,
+      actionFn:"navigate('goals')" },
+  ];
+
   const breakdown = $('score-breakdown');
-  breakdown.innerHTML = [
-    {label:'Ahorro', val:score.breakdown.savings, max:40},
-    {label:'Consistencia', val:score.breakdown.consistency, max:25},
-    {label:'Presupuestos', val:score.breakdown.budgets, max:20},
-    {label:'Metas', val:score.breakdown.goals, max:15},
-  ].map(item=>`
+  breakdown.innerHTML = items.map(item=>`
     <div class="score-row">
       <div class="score-row-header">
         <span class="text-muted text-xs">${item.label}</span>
-        <span class="text-xs font-mono">${item.val}/${item.max}</span>
+        ${item.active
+          ? `<span class="text-xs font-mono">${item.val}/${item.max}</span>`
+          : `<span class="score-na" onclick="${item.actionFn}">+ Configurar</span>`
+        }
       </div>
       <div class="score-bar-bg">
-        <div class="score-bar-fill" style="width:${(item.val/item.max)*100}%"></div>
+        <div class="score-bar-fill" style="width:${(item.val/item.max)*100}%;${!item.active?'opacity:0.15;':''}"></div>
       </div>
     </div>`).join('');
+}
+
+function renderProjection(txs, isPastMonth, income, expenses) {
+  const el = $('proj-body');
+  if (!el) return;
+
+  if (isPastMonth) {
+    // Mes ya terminado — muestra resumen real
+    const savings = income - expenses;
+    const savePct = income > 0 ? ((savings / income) * 100).toFixed(0) : 0;
+    el.innerHTML = `
+      <div class="proj-stats">
+        <div class="proj-stat">
+          <span class="proj-stat-label">Ingresos totales</span>
+          <span class="proj-stat-value" style="color:var(--emerald)">${fmt(income)}</span>
+        </div>
+        <div class="proj-stat">
+          <span class="proj-stat-label">Gastos totales</span>
+          <span class="proj-stat-value" style="color:var(--rose)">${fmt(expenses)}</span>
+        </div>
+      </div>
+      <div class="proj-summary ${savings >= 0 ? 'proj-ok' : 'proj-warn'}">
+        ${savings >= 0
+          ? `✅ Ahorraste <strong>${fmt(savings)}</strong> — ${savePct}% de tus ingresos`
+          : `⚠️ Déficit de <strong>${fmt(Math.abs(savings))}</strong> — gastaste más de lo que ingresaste`
+        }
+      </div>`;
+    return;
+  }
+
+  // Mes actual — proyección lineal
+  const now         = new Date();
+  const dayOfMonth  = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  const daysLeft    = daysInMonth - dayOfMonth;
+  const proj        = projectEndOfMonth(txs);
+
+  // Barras: ancho relativo al ingreso o al gasto proyectado (lo que sea mayor)
+  const ref = Math.max(income, proj.projectedExpenses, 1);
+  const spentPct = Math.min((expenses / ref) * 100, 100);
+  const addlPct  = Math.min(((proj.projectedExpenses - expenses) / ref) * 100, 100 - spentPct);
+
+  el.innerHTML = `
+    <div class="proj-stats">
+      <div class="proj-stat">
+        <span class="proj-stat-label">Gastado (día ${dayOfMonth})</span>
+        <span class="proj-stat-value" style="color:var(--rose)">${fmt(expenses)}</span>
+      </div>
+      <div class="proj-stat">
+        <span class="proj-stat-label">Proyección fin de mes</span>
+        <span class="proj-stat-value">${fmt(proj.projectedExpenses)}</span>
+      </div>
+    </div>
+    <div class="proj-bar-wrap">
+      <div class="proj-bar-track">
+        <div class="proj-bar-spent"     style="width:${spentPct.toFixed(1)}%"></div>
+        <div class="proj-bar-projected" style="width:${addlPct.toFixed(1)}%"></div>
+      </div>
+      <div class="proj-bar-labels">
+        <span class="text-xs text-muted">S/ 0</span>
+        ${income > 0 ? `<span class="text-xs text-muted">Ingreso: ${fmt(income)}</span>` : ''}
+      </div>
+    </div>
+    <div class="proj-summary ${proj.projectedSavings >= 0 ? 'proj-ok' : 'proj-warn'}">
+      ${proj.projectedSavings >= 0
+        ? `✅ Al ritmo actual ahorrarías <strong>${fmt(proj.projectedSavings)}</strong> este mes`
+        : `⚠️ Al ritmo actual tendrías un déficit de <strong>${fmt(Math.abs(proj.projectedSavings))}</strong>`
+      }
+    </div>
+    <p class="text-xs text-muted text-center" style="margin-top:0.6rem">
+      Quedan <strong>${daysLeft}</strong> días · Confianza: ${proj.confidence.toLowerCase()}
+      ${dayOfMonth < 7 ? ' · (datos insuficientes, espera al menos 7 días)' : ''}
+    </p>`;
 }
 
 function renderWeeklyChart(txs) {
@@ -1123,7 +1213,15 @@ function renderWeeklyChart(txs) {
   const gridColor  = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   const tickColor  = isDark ? '#71717a' : '#6B6B80';
 
-  const labels = usedWeeks.map(([w]) => `Sem ${w}`);
+  // Etiquetas con rango real de fechas (ej: "1–7", "8–14")
+  const [cy, cm] = State.currentMonth.split('-').map(Number);
+  const daysInMonth = new Date(cy, cm, 0).getDate();
+  const labels = usedWeeks.map(([w]) => {
+    const wNum = parseInt(w);
+    const start = (wNum - 1) * 7 + 1;
+    const end   = Math.min(wNum * 7, daysInMonth);
+    return `${start}–${end}`;
+  });
   State.charts.weekly = new Chart(ctx, {
     type: 'bar',
     data: {
