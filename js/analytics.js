@@ -118,6 +118,22 @@ function generateInsights(transactions, prevTransactions, categories, budgets = 
     });
   }
 
+  // 6. Sugerencia de ahorro (regla 50/30/20)
+  if (income > 0 && expenses.length > 0) {
+    const rate = ((income - totalExp) / income) * 100;
+    if (rate >= 0 && rate < 10) {
+      const gap = income * 0.20 - (income - totalExp);
+      insights.push({ type: 'tip', icon: '💡', priority: 7,
+        title: `Ahorro bajo (${rate.toFixed(0)}% de tus ingresos)`,
+        desc: `La regla 20% sugiere ahorrar ${fmt(income * 0.20)}/mes. Te faltan ${fmt(gap)} — ¿qué categoría puedes recortar?` });
+    }
+    if (rate >= 10 && rate < 20) {
+      insights.push({ type: 'tip', icon: '📌', priority: 3,
+        title: `Vas bien, pero puedes mejorar (${rate.toFixed(0)}%)`,
+        desc: `Estás ahorrando ${fmt(income - totalExp)}. Con un pequeño ajuste llegarías al 20% recomendado.` });
+    }
+  }
+
   return insights.sort((a,b) => b.priority - a.priority).slice(0, 5);
 }
 

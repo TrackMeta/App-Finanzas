@@ -70,6 +70,14 @@ function showApp() {
   $('screen-app').classList.remove('hidden');
   $('screen-app').classList.add('active');
   loadDashboard();
+
+  // Manejo de shortcuts PWA (?action=...)
+  const action = new URLSearchParams(location.search).get('action');
+  if (action === 'expense')      setTimeout(() => openQuickAdd('expense'), 400);
+  else if (action === 'income')  setTimeout(() => openQuickAdd('income'), 400);
+  else if (action === 'transactions') setTimeout(() => navigate('transactions'), 300);
+  // Limpiar el parámetro de la URL sin recargar
+  if (action) history.replaceState(null, '', location.pathname);
 }
 function showLogin() { /* sin login */ }
 
@@ -183,7 +191,26 @@ async function loadDashboard() {
   // Insights (incluye alertas de presupuesto)
   const budgets = Budgets.getAll(State.currentMonth);
   const insights = generateInsights(txs, prevTxs, cats, budgets);
-  renderInsights($('dashboard-insights'), insights.slice(0,3));
+
+  // Alertas de deudas próximas o vencidas
+  const debtAlerts = Debts.getAll()
+    .filter(d => d.total > (d.paid || 0) && d.next_payment_date)
+    .map(d => {
+      const days = Math.ceil((new Date(d.next_payment_date) - new Date()) / 86400000);
+      if (days > 5) return null;
+      return {
+        type: days <= 0 ? 'warning' : 'tip',
+        icon: days <= 0 ? '🚨' : '⏰',
+        priority: days <= 0 ? 10 : 9,
+        title: days <= 0
+          ? `Deuda vencida: ${d.name}`
+          : `Pago en ${days} día${days !== 1 ? 's' : ''}: ${d.name}`,
+        desc: `Monto pendiente: ${fmt(d.total - (d.paid || 0))}. ${days <= 0 ? 'Regulariza cuanto antes.' : 'Prepara el pago.'}`
+      };
+    }).filter(Boolean);
+
+  const allInsights = [...debtAlerts, ...insights].sort((a,b) => b.priority - a.priority);
+  renderInsights($('dashboard-insights'), allInsights.slice(0, 3));
 
   // Cuentas en dashboard
   renderAccountsCard();
@@ -334,7 +361,10 @@ function txItemHTML(tx, showDate = false) {
   }
   const color     = tx.category?.color ?? '#6B7280';
   const recurring = tx.is_recurring ? '🔁 ' : '';
-  const meta      = [showDate ? fmtDate(tx.date) : '', tx.note].filter(Boolean).join(' · ');
+  const accounts  = Accounts.getAll();
+  const account   = tx.account_id ? accounts.find(a => a.id === tx.account_id) : null;
+  const accLabel  = account ? `${account.icon} ${account.name}` : '';
+  const meta      = [showDate ? fmtDate(tx.date) : '', tx.note, accLabel].filter(Boolean).join(' · ');
   return `
     <div class="tx-item" data-id="${tx.id}">
       <div class="tx-icon" style="background:${color}20">${tx.category?.icon ?? '💸'}</div>
@@ -380,6 +410,11 @@ function openEditTx(id) {
   $('edit-tx-category').innerHTML = `<option value="">Sin categoría</option>` +
     cats.map(c => `<option value="${c.id}" ${c.id===tx.category_id?'selected':''}>${c.icon} ${c.name}</option>`).join('');
 
+  // Cuenta
+  const accs = Accounts.getAll();
+  $('edit-tx-account').innerHTML = `<option value="">— Sin cuenta —</option>` +
+    accs.map(a => `<option value="${a.id}" ${a.id===tx.account_id?'selected':''}>${a.icon} ${a.name}</option>`).join('');
+
   openOverlay('overlay-edit-tx');
 }
 
@@ -392,6 +427,7 @@ async function saveEditTx() {
     amount,
     type,
     category_id: $('edit-tx-category').value || null,
+    account_id:  $('edit-tx-account').value  || null,
     date:        $('edit-tx-date').value,
     note:        $('edit-tx-note').value || null,
     is_recurring: _editTxRecurring
