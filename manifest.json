@@ -10,8 +10,8 @@
   "orientation": "portrait",
   "lang": "es-PE",
   "icons": [
-    { "src": "https://placehold.co/192x192/10B981/ffffff?text=💰", "sizes": "192x192", "type": "image/png" },
-    { "src": "https://placehold.co/512x512/10B981/ffffff?text=💰", "sizes": "512x512", "type": "image/png" }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
   "shortcuts": [
     {
@@ -19,21 +19,21 @@
       "short_name": "Gasto",
       "description": "Abre el registro rápido de gastos",
       "url": "/App-Finanzas/?action=expense",
-      "icons": [{ "src": "https://placehold.co/192x192/EF4444/ffffff?text=-", "sizes": "192x192" }]
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Registrar ingreso",
       "short_name": "Ingreso",
       "description": "Abre el registro rápido de ingresos",
       "url": "/App-Finanzas/?action=income",
-      "icons": [{ "src": "https://placehold.co/192x192/10B981/ffffff?text=%2B", "sizes": "192x192" }]
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Ver movimientos",
       "short_name": "Movimientos",
       "description": "Ver los movimientos del mes",
       "url": "/App-Finanzas/?action=transactions",
-      "icons": [{ "src": "https://placehold.co/192x192/3B82F6/ffffff?text=≡", "sizes": "192x192" }]
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
