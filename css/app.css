@@ -585,6 +585,50 @@ html, body {
 .proj-warn { background: var(--rose-dim);    color: var(--rose); }
 
 /* =============================================
+   BARRA GLOBAL DE FILTRO DE FECHAS
+============================================= */
+.date-filter-bar {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  padding: 0.5rem 1rem 0.4rem;
+  display: flex; flex-direction: column; gap: 0.4rem;
+}
+.date-chips {
+  display: flex; gap: 0.35rem; flex-wrap: wrap;
+}
+.date-chip {
+  padding: 0.3rem 0.7rem;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 0.78rem; font-weight: 500;
+  cursor: pointer; transition: all 0.15s;
+  white-space: nowrap;
+}
+.date-chip:hover  { border-color: var(--primary); color: var(--primary); }
+.date-chip.active {
+  background: var(--primary); border-color: var(--primary);
+  color: #fff; font-weight: 600;
+}
+.date-month-nav {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0.5rem; padding: 0.1rem 0;
+}
+.date-month-nav .btn-icon { font-size: 1.1rem; padding: 0.2rem 0.5rem; }
+.date-custom-row {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  padding: 0.2rem 0;
+}
+.input-sm {
+  padding: 0.3rem 0.5rem; font-size: 0.8rem;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-secondary); color: var(--text);
+  flex: 1; min-width: 120px;
+}
+.input-sm:focus { outline: none; border-color: var(--primary); }
+
+/* =============================================
    SIMULADOR
 ============================================= */
 .sim-slider-row { display: flex; justify-content: space-between; align-items: center; }

@@ -24,9 +24,11 @@ const State = {
   txFilterType: 'all',
   txCatFilter: '',
   txSearch: '',
-  txDateFrom: '',
-  txDateTo: '',
   quickAddAccountId: '',
+  // Filtro global de fechas
+  dateFilter: 'month',      // 'today'|'yesterday'|'week'|'month'|'custom'
+  globalDateFrom: '',
+  globalDateTo: '',
 };
 
 // ---- UTILS ----
@@ -46,6 +48,120 @@ function fmtMonth(m) {
 }
 function today() { return new Date().toISOString().split('T')[0]; }
 
+// ---- FILTRO GLOBAL DE FECHAS ----
+function getActiveDateRange() {
+  const t = today();
+  switch (State.dateFilter) {
+    case 'today':
+      return { from: t, to: t };
+    case 'yesterday': {
+      const y = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+      return { from: y, to: y };
+    }
+    case 'week': {
+      const d = new Date(); const dow = d.getDay() === 0 ? 7 : d.getDay();
+      const mon = new Date(d); mon.setDate(d.getDate() - dow + 1);
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+      return { from: mon.toISOString().split('T')[0], to: sun.toISOString().split('T')[0] };
+    }
+    case 'custom':
+      return { from: State.globalDateFrom || t, to: State.globalDateTo || t };
+    default: { // month
+      const [y, m] = State.currentMonth.split('-');
+      return { from: `${y}-${m}-01`, to: new Date(y, m, 0).toISOString().split('T')[0] };
+    }
+  }
+}
+
+function getDateRangeLabel() {
+  switch (State.dateFilter) {
+    case 'today':     return 'Hoy';
+    case 'yesterday': return 'Ayer';
+    case 'week': {
+      const { from, to } = getActiveDateRange();
+      const f = new Date(from+'T00:00:00').toLocaleDateString('es-PE',{day:'numeric',month:'short'});
+      const t2= new Date(to  +'T00:00:00').toLocaleDateString('es-PE',{day:'numeric',month:'short'});
+      return `${f} – ${t2}`;
+    }
+    case 'custom': {
+      const { from, to } = getActiveDateRange();
+      if (!State.globalDateFrom) return 'Rango personalizado';
+      const f = new Date(from+'T00:00:00').toLocaleDateString('es-PE',{day:'numeric',month:'short'});
+      const t2= new Date(to  +'T00:00:00').toLocaleDateString('es-PE',{day:'numeric',month:'short'});
+      return from === to ? f : `${f} → ${t2}`;
+    }
+    default: return fmtMonth(State.currentMonth);
+  }
+}
+
+function getPrevPeriodRange(from, to) {
+  if (State.dateFilter === 'month') {
+    const prevM = getPrevMonth(State.currentMonth);
+    const [y, m] = prevM.split('-');
+    return { from: `${y}-${m}-01`, to: new Date(y, m, 0).toISOString().split('T')[0] };
+  }
+  const days = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
+  const prevTo   = new Date(from+'T00:00:00'); prevTo.setDate(prevTo.getDate() - 1);
+  const prevFrom = new Date(prevTo);           prevFrom.setDate(prevTo.getDate() - days + 1);
+  return { from: prevFrom.toISOString().split('T')[0], to: prevTo.toISOString().split('T')[0] };
+}
+
+function setDateFilter(filter) {
+  State.dateFilter = filter;
+  if (filter === 'custom' && !State.globalDateFrom) {
+    // Pre-fill custom inputs with today
+    const t = today();
+    State.globalDateFrom = t;
+    State.globalDateTo   = t;
+    const el1 = $('global-date-from'); const el2 = $('global-date-to');
+    if (el1) el1.value = t;
+    if (el2) el2.value = t;
+  }
+  updateDateBar();
+  reloadCurrentPage();
+}
+
+function shiftGlobalMonth(delta) {
+  const [y,m] = State.currentMonth.split('-').map(Number);
+  const d = new Date(y,m-1,1); d.setMonth(d.getMonth()+delta);
+  const next = d.toISOString().slice(0,7);
+  if (delta > 0 && next > new Date().toISOString().slice(0,7)) return;
+  State.currentMonth = next;
+  updateDateBar();
+  reloadCurrentPage();
+}
+
+function updateDateBar() {
+  document.querySelectorAll('.date-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.filter === State.dateFilter)
+  );
+  const isMonth  = State.dateFilter === 'month';
+  const isCustom = State.dateFilter === 'custom';
+  $('date-month-nav')?.classList.toggle('hidden', !isMonth);
+  $('date-custom-row')?.classList.toggle('hidden', !isCustom);
+  if ($('global-month-label')) $('global-month-label').textContent = fmtMonth(State.currentMonth);
+}
+
+function applyCustomDateFilter() {
+  const from = $('global-date-from')?.value;
+  const to   = $('global-date-to')?.value;
+  if (!from || !to) { toast('Selecciona un rango de fechas', 'error'); return; }
+  if (from > to) { toast('La fecha inicial debe ser antes de la final', 'error'); return; }
+  State.globalDateFrom = from;
+  State.globalDateTo   = to;
+  reloadCurrentPage();
+}
+
+function reloadCurrentPage() {
+  const active = document.querySelector('.page.active');
+  if (!active) return;
+  const page = active.id.replace('page-', '');
+  if (page === 'dashboard')    loadDashboard();
+  if (page === 'transactions') loadTransactions();
+  if (page === 'insights')     loadInsights();
+  if (page === 'accounts')     loadAccountsPage();
+}
+
 // ---- ROUTER ----
 function navigate(page) {
   document.querySelectorAll('.page').forEach(p => { p.classList.remove('active'); p.classList.add('hidden'); });
@@ -55,6 +171,14 @@ function navigate(page) {
   document.querySelectorAll('.tab, .nav-link').forEach(t => {
     t.classList.toggle('active', t.dataset.page === page);
   });
+
+  // Barra de filtro de fechas: visible en páginas financieras principales
+  const showDateBar = ['dashboard','transactions','insights','accounts'].includes(page);
+  const dateBar = $('global-date-bar');
+  if (dateBar) {
+    dateBar.classList.toggle('hidden', !showDateBar);
+    if (showDateBar) updateDateBar();
+  }
 
   if (page === 'dashboard') loadDashboard();
   if (page === 'transactions') loadTransactions();
@@ -75,6 +199,11 @@ function showApp() {
 
   $('screen-app').classList.remove('hidden');
   $('screen-app').classList.add('active');
+
+  // Inicializar barra global de fechas (dashboard la muestra)
+  const dateBar = $('global-date-bar');
+  if (dateBar) { dateBar.classList.remove('hidden'); updateDateBar(); }
+
   loadDashboard();
 
   // Resumen de fin de mes (primer acceso a un mes nuevo)
@@ -166,8 +295,9 @@ function showOnboarding() {
 
 // ---- DASHBOARD ----
 async function loadDashboard() {
+  const { from, to } = getActiveDateRange();
   const [txs, cats] = await Promise.all([
-    Transactions.getByMonth(State.currentMonth),
+    Transactions.getByDateRange(from, to),
     Categories.getAll()
   ]);
   State.transactions = txs;
@@ -181,13 +311,16 @@ async function loadDashboard() {
   $('stat-expenses').textContent = fmt(expenses, true);
   $('stat-savings').textContent = fmt(Math.max(0, savings), true);
 
-  // Delta vs mes anterior
-  const prevMonth = getPrevMonth(State.currentMonth);
-  const prevTxs = await Transactions.getByMonth(prevMonth);
+  // Delta vs periodo anterior
+  const prevRange = getPrevPeriodRange(from, to);
+  const prevTxs = Transactions.getByDateRange(prevRange.from, prevRange.to);
   const prevExp = prevTxs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
   if (prevExp > 0) {
     const delta = ((expenses - prevExp) / prevExp) * 100;
-    $('hero-delta').textContent = `${delta>0?'+':''}${delta.toFixed(0)}% vs mes anterior`;
+    const label = State.dateFilter === 'month' ? 'mes anterior' : 'periodo anterior';
+    $('hero-delta').textContent = `${delta>0?'+':''}${delta.toFixed(0)}% vs ${label}`;
+  } else {
+    $('hero-delta').textContent = '';
   }
 
   // Sparkline
@@ -197,7 +330,8 @@ async function loadDashboard() {
   renderDonut(txs, cats);
 
   // Insights (incluye alertas de presupuesto)
-  const budgets = Budgets.getAll(State.currentMonth);
+  const budgetMonth = from.slice(0,7);
+  const budgets = Budgets.getAll(budgetMonth);
   const insights = generateInsights(txs, prevTxs, cats, budgets);
 
   // Alertas de deudas próximas o vencidas
@@ -471,29 +605,13 @@ function renderInsights(container, insights) {
 
 // ---- TRANSACTIONS PAGE ----
 async function loadTransactions() {
-  // Si hay rango de fechas activo, ignorar el mes y filtrar por rango
-  if (State.txDateFrom && State.txDateTo) {
-    const all = lsGet('cf_transactions', []);
-    const cats = lsGet('cf_categories', []);
-    const ranged = all
-      .filter(t => t.date >= State.txDateFrom && t.date <= State.txDateTo)
-      .map(t => ({ ...t, category: cats.find(c => c.id === t.category_id) ?? null }))
-      .sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at));
-    State.transactions = ranged;
-    $('current-month-label').textContent = `${State.txDateFrom} → ${State.txDateTo}`;
-    renderTransactionsPage(ranged);
-    return;
-  }
-
-  const label = $('current-month-label');
-  label.textContent = fmtMonth(State.currentMonth);
-
-  const txs = await Transactions.getByMonth(State.currentMonth);
+  const { from, to } = getActiveDateRange();
+  const txs = Transactions.getByDateRange(from, to);
   State.transactions = txs;
   renderTransactionsPage(txs);
 
-  // Sugerencia de recurrentes al abrir el mes actual
-  checkRecurringSuggestion(txs);
+  // Sugerencia de recurrentes solo cuando se ve el mes actual completo
+  if (State.dateFilter === 'month') checkRecurringSuggestion(txs);
 }
 
 function checkRecurringSuggestion(currentTxs) {
@@ -808,8 +926,11 @@ async function deleteDebt(id) {
 // ---- ACCOUNTS PAGE ----
 function loadAccountsPage() {
   const accounts = Accounts.getAll();
-  const allTxs   = lsGet('cf_transactions', []);
   const cats     = lsGet('cf_categories', []);
+
+  // Filtrar por rango de fechas activo (para el historial de movimientos)
+  const { from, to } = getActiveDateRange();
+  const allTxs = lsGet('cf_transactions', []).filter(t => t.date >= from && t.date <= to);
 
   // Total entre todas las cuentas
   const totalBal = accounts.reduce((s, a) => s + Accounts.getBalance(a.id), 0);
@@ -1039,18 +1160,20 @@ function openBudgetsModal(cats, budgets) {
 }
 
 async function loadInsights() {
-  $('insights-month-label').textContent = fmtMonth(State.currentMonth);
+  const { from, to } = getActiveDateRange();
+  const prevRange     = getPrevPeriodRange(from, to);
 
   const [txs, cats, prevTxs] = await Promise.all([
-    Transactions.getByMonth(State.currentMonth),
+    Transactions.getByDateRange(from, to),
     Categories.getAll(),
-    Transactions.getByMonth(getPrevMonth(State.currentMonth))
+    Transactions.getByDateRange(prevRange.from, prevRange.to)
   ]);
   State.transactions = txs;
   State.categories   = cats;
 
-  // Presupuestos
-  const budgets = Budgets.getAll(State.currentMonth);
+  // Presupuestos (siempre por mes)
+  const budgetMonth = from.slice(0,7);
+  const budgets = Budgets.getAll(budgetMonth);
   renderBudgetsList(txs, cats, budgets);
 
   // Score (bug fix: Streaks.get() no recibe argumento)
@@ -1058,12 +1181,14 @@ async function loadInsights() {
   const score  = calcScore(txs, Goals.getAll(), budgets, streak);
   renderScore(score);
 
-  // Proyección / Resumen de mes
+  // Proyección / Resumen de período
   const thisMonthKey = new Date().toISOString().slice(0,7);
-  const isPastMonth  = State.currentMonth < thisMonthKey;
+  // Solo proyección real si estamos viendo el mes actual completo
+  const isPastPeriod = (State.dateFilter === 'month' && State.currentMonth < thisMonthKey)
+                    || (State.dateFilter !== 'month' && to < today());
   const incomeTotal  = txs.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const expTotal     = txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
-  renderProjection(txs, isPastMonth, incomeTotal, expTotal);
+  renderProjection(txs, isPastPeriod, incomeTotal, expTotal);
 
   // Gráfico semanal
   renderWeeklyChart(txs);
@@ -2443,58 +2568,16 @@ async function init() {
     });
   });
 
-  // -- Filtro por rango de fechas --
-  $('tx-date-toggle').addEventListener('click', () => {
-    const panel = $('tx-date-range');
-    const arrow = $('tx-date-toggle-arrow');
-    const open  = panel.classList.toggle('hidden');
-    $('tx-date-toggle').classList.toggle('open', !open);
-    arrow.textContent = open ? '▼' : '▲';
-  });
+  // -- Month nav global (prev/next) --
+  $('global-prev-month')?.addEventListener('click', () => shiftGlobalMonth(-1));
+  $('global-next-month')?.addEventListener('click', () => shiftGlobalMonth(1));
 
-  function applyDateRange() {
-    State.txDateFrom = $('tx-date-from').value;
-    State.txDateTo   = $('tx-date-to').value;
-    if (State.txDateFrom && State.txDateTo) loadTransactions();
-  }
-  $('tx-date-from').addEventListener('change', applyDateRange);
-  $('tx-date-to').addEventListener('change', applyDateRange);
-  $('tx-date-clear').addEventListener('click', () => {
-    State.txDateFrom = ''; State.txDateTo = '';
-    $('tx-date-from').value = ''; $('tx-date-to').value = '';
-    // Cerrar panel
-    $('tx-date-range').classList.add('hidden');
-    $('tx-date-toggle').classList.remove('open');
-    $('tx-date-toggle-arrow').textContent = '▼';
-    loadTransactions();
+  // -- Custom date: apply on change --
+  $('global-date-from')?.addEventListener('change', () => {
+    if ($('global-date-to')?.value) applyCustomDateFilter();
   });
-
-  // -- Month nav (transactions) --
-  $('prev-month').addEventListener('click', () => {
-    const [y,m] = State.currentMonth.split('-').map(Number);
-    const d = new Date(y,m-1,1); d.setMonth(d.getMonth()-1);
-    State.currentMonth = d.toISOString().slice(0,7);
-    loadTransactions();
-  });
-  $('next-month').addEventListener('click', () => {
-    const [y,m] = State.currentMonth.split('-').map(Number);
-    const d = new Date(y,m-1,1); d.setMonth(d.getMonth()+1);
-    const next = d.toISOString().slice(0,7);
-    if (next <= new Date().toISOString().slice(0,7)) { State.currentMonth=next; loadTransactions(); }
-  });
-
-  // -- Insights month nav --
-  $('insights-prev-month').addEventListener('click', () => {
-    const [y,m] = State.currentMonth.split('-').map(Number);
-    const d = new Date(y,m-1,1); d.setMonth(d.getMonth()-1);
-    State.currentMonth = d.toISOString().slice(0,7);
-    loadInsights();
-  });
-  $('insights-next-month').addEventListener('click', () => {
-    const [y,m] = State.currentMonth.split('-').map(Number);
-    const d = new Date(y,m-1,1); d.setMonth(d.getMonth()+1);
-    const next = d.toISOString().slice(0,7);
-    if (next <= new Date().toISOString().slice(0,7)) { State.currentMonth = next; loadInsights(); }
+  $('global-date-to')?.addEventListener('change', () => {
+    if ($('global-date-from')?.value) applyCustomDateFilter();
   });
 
   // -- Calendar nav --

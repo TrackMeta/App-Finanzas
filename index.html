@@ -159,6 +159,32 @@
   <!-- Contenido principal -->
   <main class="main-content">
 
+    <!-- ===== BARRA GLOBAL DE FECHAS ===== -->
+    <div id="global-date-bar" class="date-filter-bar hidden">
+      <!-- Chips de período -->
+      <div class="date-chips">
+        <button class="date-chip" data-filter="today"     onclick="setDateFilter('today')">Hoy</button>
+        <button class="date-chip" data-filter="yesterday" onclick="setDateFilter('yesterday')">Ayer</button>
+        <button class="date-chip" data-filter="week"      onclick="setDateFilter('week')">Esta sem.</button>
+        <button class="date-chip active" data-filter="month" onclick="setDateFilter('month')">Mes</button>
+        <button class="date-chip" data-filter="custom"    onclick="setDateFilter('custom')">📅 Rango</button>
+      </div>
+      <!-- Navegador de mes (solo cuando filter=month) -->
+      <div id="date-month-nav" class="date-month-nav">
+        <button id="global-prev-month" class="btn-icon">‹</button>
+        <span   id="global-month-label" class="font-medium text-sm"></span>
+        <button id="global-next-month" class="btn-icon">›</button>
+      </div>
+      <!-- Rango personalizado (solo cuando filter=custom) -->
+      <div id="date-custom-row" class="date-custom-row hidden">
+        <input type="date" id="global-date-from" class="input input-sm" />
+        <span class="text-muted text-xs">→</span>
+        <input type="date" id="global-date-to"   class="input input-sm" />
+        <button class="btn btn-sm btn-primary" onclick="applyCustomDateFilter()">Aplicar</button>
+      </div>
+    </div>
+    <!-- ===== / BARRA GLOBAL DE FECHAS ===== -->
+
     <!-- PAGE: DASHBOARD -->
     <div id="page-dashboard" class="page active">
       <div class="page-inner">
@@ -310,13 +336,6 @@
       <div class="page-inner">
         <h1 class="page-title">Movimientos</h1>
 
-        <!-- Navegador de mes -->
-        <div class="month-nav">
-          <button id="prev-month" class="btn-icon">‹</button>
-          <span id="current-month-label" class="font-medium"></span>
-          <button id="next-month" class="btn-icon">›</button>
-        </div>
-
         <!-- Resumen del mes -->
         <div class="stats-grid">
           <div class="stat-card income">
@@ -347,20 +366,6 @@
             <span id="tx-cat-toggle-arrow">▼</span>
           </button>
           <div class="filter-row hidden" id="tx-cat-filters" style="margin-top:0.4rem;padding-bottom:4px;"></div>
-        </div>
-
-        <!-- Filtro por rango de fechas — colapsable -->
-        <div id="tx-date-filter-wrap">
-          <button id="tx-date-toggle" class="cat-filter-toggle">
-            <span>📅 Filtrar por rango de fechas</span>
-            <span id="tx-date-toggle-arrow">▼</span>
-          </button>
-          <div id="tx-date-range" class="hidden" style="margin-top:0.4rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
-            <input type="date" id="tx-date-from" class="input" style="flex:1;min-width:130px;font-size:0.85rem;padding:0.4rem 0.6rem;" />
-            <span class="text-muted text-sm">→</span>
-            <input type="date" id="tx-date-to" class="input" style="flex:1;min-width:130px;font-size:0.85rem;padding:0.4rem 0.6rem;" />
-            <button id="tx-date-clear" class="btn btn-sm btn-ghost text-rose" style="font-size:0.75rem;">✕ Limpiar</button>
-          </div>
         </div>
 
         <!-- Banner: recurrentes pendientes -->
@@ -449,15 +454,7 @@
     <!-- PAGE: INSIGHTS -->
     <div id="page-insights" class="page hidden">
       <div class="page-inner">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.25rem;">
-          <h1 class="page-title" style="margin:0;">Análisis financiero</h1>
-        </div>
-        <!-- Navegador de mes -->
-        <div class="month-nav" style="margin-bottom:0.75rem;">
-          <button id="insights-prev-month" class="btn-icon">‹</button>
-          <span id="insights-month-label" class="font-medium"></span>
-          <button id="insights-next-month" class="btn-icon">›</button>
-        </div>
+        <h1 class="page-title">Análisis financiero</h1>
 
         <!-- Score -->
         <div class="card">

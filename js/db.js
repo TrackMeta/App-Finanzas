@@ -72,6 +72,13 @@ const Transactions = {
       .sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at));
   },
 
+  getByDateRange(from, to) {
+    return lsGet('cf_transactions', [])
+      .filter(t => t.date >= from && t.date <= to)
+      .map(t => this._enrich(t))
+      .sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at));
+  },
+
   getRecent(limit = 10) {
     return lsGet('cf_transactions', [])
       .slice(-limit).reverse()
