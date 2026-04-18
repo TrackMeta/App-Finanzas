@@ -2,7 +2,7 @@
 // SERVICE WORKER – Coach Finanzas PWA
 // =============================================
 
-const CACHE_NAME = 'finanzas-v22';
+const CACHE_NAME = 'finanzas-v23';
 
 const ASSETS = [
   '/App-Finanzas/',
@@ -33,11 +33,14 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // CDNs → siempre red
-  if (event.request.url.includes('cdn.jsdelivr')) {
-    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+  const url = event.request.url;
+
+  // Requests externos (CDNs, Supabase API, etc.) → siempre red directa, sin caché ni fallback
+  if (!url.startsWith(self.location.origin)) {
+    event.respondWith(fetch(event.request));
     return;
   }
+
   // Assets locales → cache-first
   event.respondWith(
     caches.match(event.request).then(cached => {

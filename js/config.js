@@ -4,8 +4,8 @@
 
 // ── Supabase ──────────────────────────────────
 // Reemplaza con tus valores en: supabase.com → Project Settings → API
-const SUPABASE_URL      = 'https://TU_PROYECTO.supabase.co';
-const SUPABASE_ANON_KEY = 'TU_ANON_KEY_AQUI';
+const SUPABASE_URL      = 'https://agcesjcsvrqxxbonorlm.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFnY2VzamNzdnJxeHhib25vcmxtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1Mjk3MTMsImV4cCI6MjA5MjEwNTcxM30.zEIjmYCutsFGqu16CfuXz6ssiVjvOC4Sap8kCzzZLxA';
 
 // Monedas disponibles
 const CURRENCIES = {
