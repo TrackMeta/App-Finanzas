@@ -30,9 +30,10 @@ const State = {
   txSearch: '',
   quickAddAccountId: '',
   // Filtro global de fechas
-  dateFilter: 'total',      // 'total'|'today'|'yesterday'|'week'|'month'|'custom'
+  dateFilter: 'total',      // 'total'|'today'|'yesterday'|'week'|'month'|'date'|'custom'
   globalDateFrom: '',
   globalDateTo: '',
+  specificDate: today(),    // para el filtro 'date'
 };
 
 // ---- UTILS ----
@@ -70,6 +71,8 @@ function getActiveDateRange() {
       const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
       return { from: mon.toISOString().split('T')[0], to: sun.toISOString().split('T')[0] };
     }
+    case 'date':
+      return { from: State.specificDate || t, to: State.specificDate || t };
     case 'custom':
       return { from: State.globalDateFrom || t, to: State.globalDateTo || t };
     default: { // month
@@ -84,6 +87,10 @@ function getDateRangeLabel() {
     case 'total':     return 'Todo el tiempo';
     case 'today':     return 'Hoy';
     case 'yesterday': return 'Ayer';
+    case 'date': {
+      const d = new Date((State.specificDate || today())+'T00:00:00');
+      return d.toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short'});
+    }
     case 'week': {
       const { from, to } = getActiveDateRange();
       const f = new Date(from+'T00:00:00').toLocaleDateString('es-PE',{day:'numeric',month:'short'});
@@ -124,6 +131,21 @@ function setDateFilter(filter) {
     if (el1) el1.value = t;
     if (el2) el2.value = t;
   }
+  if (filter === 'date') {
+    // Pre-fill con hoy si no hay fecha específica
+    if (!State.specificDate) State.specificDate = today();
+    // No recargar todavía — el usuario elige la fecha y presiona "Ver"
+    updateDateBar();
+    return;
+  }
+  updateDateBar();
+  reloadCurrentPage();
+}
+
+function applySpecificDateFilter() {
+  const val = $('global-date-specific')?.value;
+  if (!val) { toast('Selecciona una fecha', 'error'); return; }
+  State.specificDate = val;
   updateDateBar();
   reloadCurrentPage();
 }
@@ -142,11 +164,14 @@ function updateDateBar() {
   document.querySelectorAll('.date-chip').forEach(c =>
     c.classList.toggle('active', c.dataset.filter === State.dateFilter)
   );
-  const isMonth  = State.dateFilter === 'month';
-  const isCustom = State.dateFilter === 'custom';
+  const isMonth    = State.dateFilter === 'month';
+  const isCustom   = State.dateFilter === 'custom';
+  const isSpecific = State.dateFilter === 'date';
   $('date-month-nav')?.classList.toggle('hidden', !isMonth);
   $('date-custom-row')?.classList.toggle('hidden', !isCustom);
+  $('date-specific-row')?.classList.toggle('hidden', !isSpecific);
   if ($('global-month-label')) $('global-month-label').textContent = fmtMonth(State.currentMonth);
+  if (isSpecific && $('global-date-specific')) $('global-date-specific').value = State.specificDate || today();
 }
 
 function applyCustomDateFilter() {
@@ -1103,6 +1128,9 @@ function openPayDebt(id, name, total, paid) {
 }
 
 // ---- CALENDAR PAGE ----
+// Lookup de transacciones por fecha (evita pasar JSON en onclick que rompe con comillas)
+let _calTxsByDate = {};
+
 async function loadCalendar() {
   $('cal-month-label').textContent = fmtMonth(State.calMonth);
   const txs = await Transactions.getByMonth(State.calMonth);
@@ -1118,6 +1146,10 @@ function renderCalendar(txs) {
   // Calcular inicio del grid (lunes)
   let start = new Date(firstDay);
   start.setDate(start.getDate() - (start.getDay()===0?6:start.getDay()-1));
+
+  // Indexar transacciones por fecha (sin JSON en onclick)
+  _calTxsByDate = {};
+  txs.forEach(t => { (_calTxsByDate[t.date] = _calTxsByDate[t.date] || []).push(t); });
 
   const dailyExp = {};
   const dailyInc = {};
@@ -1142,8 +1174,9 @@ function renderCalendar(txs) {
     const ratio = amount / maxDay;
     const level = amount === 0 ? 0 : ratio < 0.3 ? 1 : ratio < 0.6 ? 2 : ratio < 0.85 ? 3 : 4;
 
+    // Pasar solo dateStr al onclick — las transacciones se buscan en _calTxsByDate
     html += `<div class="cal-cell level-${level} ${!isCurrentMonth?'other-month':''} ${isToday?'today':''}"
-      data-date="${dateStr}" onclick="selectCalDay('${dateStr}', ${JSON.stringify(txs.filter(t=>t.date===dateStr))})">
+      data-date="${dateStr}" onclick="selectCalDay('${dateStr}')">
       <span class="cal-day-num">${cur.getDate()}</span>
       ${amount>0?`<span class="cal-amount">${fmt(amount,true)}</span>`:''}
       ${incAmt>0?`<span class="cal-income-amt">+${fmt(incAmt,true)}</span>`:''}
@@ -1156,7 +1189,8 @@ function renderCalendar(txs) {
   grid.innerHTML = html;
 }
 
-function selectCalDay(dateStr, txs) {
+function selectCalDay(dateStr) {
+  const txs = _calTxsByDate[dateStr] || [];
   document.querySelectorAll('.cal-cell').forEach(c=>c.classList.remove('selected'));
   const cell = document.querySelector(`[data-date="${dateStr}"]`);
   if (cell) cell.classList.add('selected');
@@ -1492,33 +1526,8 @@ function updateSimResult() {
   }
 }
 
-// ---- LOGROS ----
-async function checkAchievements() {
-  const txs    = State.allTransactions.length ? State.allTransactions : State.transactions;
-  const goals  = State.goals.length ? State.goals : await Goals.getAll();
-  const streak = Streaks.get();
-
-  const unlock = (type, label, icon) => {
-    const all = Achievements.getAll();
-    if (!all.includes(type)) {
-      Achievements.unlock(type);
-      setTimeout(() => toast(`🏆 Logro desbloqueado: ${icon} ${label}`, 'success'), 400);
-    }
-  };
-
-  if (txs.length >= 1)                       unlock('first_transaction', 'Primer registro',    '📝');
-  if (goals.length >= 1)                     unlock('first_goal',        'Primera meta',        '🎯');
-  if (streak.current_streak >= 7)            unlock('streak_7',          'Racha 7 días',        '🔥');
-  if (streak.current_streak >= 30)           unlock('streak_30',         'Racha 30 días',       '💥');
-  if (streak.current_streak >= 100)          unlock('streak_100',        '100 días',            '⚡');
-  if (goals.some(g => g.current_amount >= g.target_amount)) unlock('goal_completed', 'Meta lograda', '🏆');
-
-  // Ahorrador élite: tasa de ahorro > 25% este mes
-  const monthTxs = State.transactions; // ya filtradas por el período activo
-  const income   = monthTxs.filter(t => t.type === 'income').reduce((s,t) => s+t.amount, 0);
-  const expenses = monthTxs.filter(t => t.type === 'expense').reduce((s,t) => s+t.amount, 0);
-  if (income > 0 && (income - expenses) / income >= 0.25) unlock('savings_25', 'Ahorrador élite', '💎');
-}
+// ---- LOGROS ---- (desactivados — función vacía para compatibilidad)
+function checkAchievements() { /* logros eliminados */ }
 
 // ---- NOTIFICACIONES ----
 function setupNotifications() {
@@ -2589,7 +2598,22 @@ async function continueInit() {
 
   // Primera vez (por usuario): mostrar onboarding
   // Verificar clave con y sin scope de usuario para máxima compatibilidad
-  const onbDone = lsGet(uk('cf_onboarding_done'), false) || lsGet('cf_onboarding_done', false);
+  let onbDone = lsGet(uk('cf_onboarding_done'), false) || lsGet('cf_onboarding_done', false);
+
+  // Si el flag no está guardado, verificar si ya tiene cuentas en Supabase
+  // (usuario que ya configuró la app antes de que existiera el flag)
+  if (!onbDone) {
+    try {
+      const existingAccounts = await Accounts.getAll();
+      if (existingAccounts.length > 0) {
+        // Usuario existente → marcar onboarding como completo y continuar
+        lsSet(uk('cf_onboarding_done'), true);
+        lsSet('cf_onboarding_done', true);
+        onbDone = true;
+      }
+    } catch (_) { /* en caso de error de red, continuar sin bloquear */ }
+  }
+
   if (!onbDone) {
     showOnboarding();
   } else {

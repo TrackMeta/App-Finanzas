@@ -241,13 +241,19 @@
         <button class="date-chip" data-filter="week"     onclick="setDateFilter('week')">Semana</button>
         <button class="date-chip" data-filter="today"    onclick="setDateFilter('today')">Hoy</button>
         <button class="date-chip" data-filter="yesterday" onclick="setDateFilter('yesterday')">Ayer</button>
-        <button class="date-chip" data-filter="custom"   onclick="setDateFilter('custom')">📅 Rango</button>
+        <button class="date-chip" data-filter="date"     onclick="setDateFilter('date')">📅 Día</button>
+        <button class="date-chip" data-filter="custom"   onclick="setDateFilter('custom')">📆 Rango</button>
       </div>
       <!-- Navegador de mes (solo cuando filter=month) -->
       <div id="date-month-nav" class="date-month-nav">
         <button id="global-prev-month" class="btn-icon">‹</button>
         <span   id="global-month-label" class="font-medium text-sm"></span>
         <button id="global-next-month" class="btn-icon">›</button>
+      </div>
+      <!-- Fecha específica (solo cuando filter=date) -->
+      <div id="date-specific-row" class="date-custom-row hidden">
+        <input type="date" id="global-date-specific" class="input input-sm" />
+        <button class="btn btn-sm btn-primary" onclick="applySpecificDateFilter()">Ver</button>
       </div>
       <!-- Rango personalizado (solo cuando filter=custom) -->
       <div id="date-custom-row" class="date-custom-row hidden">
