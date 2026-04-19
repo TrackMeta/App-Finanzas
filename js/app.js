@@ -1118,7 +1118,9 @@ function renderCalendar(txs) {
   start.setDate(start.getDate() - (start.getDay()===0?6:start.getDay()-1));
 
   const dailyExp = {};
-  txs.filter(t=>t.type==='expense').forEach(t => dailyExp[t.date]=(dailyExp[t.date]||0)+t.amount);
+  const dailyInc = {};
+  txs.filter(t=>t.type==='expense').forEach(t => dailyExp[t.date]=(dailyExp[t.date]||0)+Number(t.amount));
+  txs.filter(t=>t.type==='income').forEach(t =>  dailyInc[t.date]=(dailyInc[t.date]||0)+Number(t.amount));
   const maxDay = Math.max(...Object.values(dailyExp), 1);
 
   const grid = $('calendar-grid');
@@ -1134,6 +1136,7 @@ function renderCalendar(txs) {
     const isCurrentMonth = cur.getMonth() === m-1;
     const isToday = dateStr === todayStr;
     const amount = dailyExp[dateStr] || 0;
+    const incAmt = dailyInc[dateStr] || 0;
     const ratio = amount / maxDay;
     const level = amount === 0 ? 0 : ratio < 0.3 ? 1 : ratio < 0.6 ? 2 : ratio < 0.85 ? 3 : 4;
 
@@ -1141,6 +1144,7 @@ function renderCalendar(txs) {
       data-date="${dateStr}" onclick="selectCalDay('${dateStr}', ${JSON.stringify(txs.filter(t=>t.date===dateStr))})">
       <span class="cal-day-num">${cur.getDate()}</span>
       ${amount>0?`<span class="cal-amount">${fmt(amount,true)}</span>`:''}
+      ${incAmt>0?`<span class="cal-income-amt">+${fmt(incAmt,true)}</span>`:''}
     </div>`;
 
     cur.setDate(cur.getDate()+1);
@@ -1160,8 +1164,21 @@ function selectCalDay(dateStr, txs) {
 
   const d = new Date(dateStr+'T00:00:00');
   $('cal-day-title').textContent = d.toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long'});
-  const total = txs.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
-  $('cal-day-total').textContent = total>0 ? `-${fmt(total)}` : '';
+
+  const totalExp = txs.filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+  const totalInc = txs.filter(t=>t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+  const net = totalInc - totalExp;
+
+  // Mostrar resumen: ingresos en verde y gastos en rojo
+  let summaryHtml = '';
+  if (totalInc > 0) summaryHtml += `<span style="color:var(--emerald);font-size:0.8rem;font-weight:600;">+${fmt(totalInc)}</span> `;
+  if (totalExp > 0) summaryHtml += `<span style="color:var(--rose);font-size:0.8rem;font-weight:600;">-${fmt(totalExp)}</span>`;
+  if (totalInc > 0 && totalExp > 0) {
+    const netColor = net >= 0 ? 'var(--emerald)' : 'var(--rose)';
+    summaryHtml += `<span style="color:${netColor};font-size:0.75rem;margin-left:0.25rem;">(${net>=0?'+':''}${fmt(net)})</span>`;
+  }
+  $('cal-day-total').innerHTML = summaryHtml;
+
   renderTxList($('cal-day-transactions'), txs);
   detail.classList.remove('hidden');
 }
@@ -1224,11 +1241,23 @@ function openBudgetsModal(cats, budgets) {
           <span style="color:var(--text-muted);font-size:0.85rem;">${CURRENCY_SYMBOL}</span>
           <input type="number" class="input budget-input" data-catid="${cat.id}"
             value="${existing ? existing.monthly_limit : ''}"
-            placeholder="0" min="0" step="1"
+            placeholder="Sin límite" min="0" step="1"
             style="width:90px;padding:0.4rem 0.5rem;font-size:0.85rem;text-align:right;" />
+          ${existing ? `<button type="button" class="btn-icon budget-clear-btn" data-catid="${cat.id}" title="Eliminar presupuesto" style="color:var(--rose);font-size:0.85rem;padding:0.2rem 0.35rem;">🗑</button>` : ''}
         </div>
       </div>`;
   }).join('');
+
+  // Botón de borrar presupuesto individual
+  $('budgets-form-list').querySelectorAll('.budget-clear-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const catId = btn.dataset.catid;
+      const input = $('budgets-form-list').querySelector(`.budget-input[data-catid="${catId}"]`);
+      if (input) { input.value = ''; input.focus(); }
+      btn.remove();
+    });
+  });
+
   openOverlay('overlay-budgets');
 }
 
@@ -2252,6 +2281,9 @@ async function loadQuickAddCategories(type) {
   $('quickadd-account-row').classList.toggle('hidden', isTransfer);
   // Ocultar recurrente en transferencias
   $('btn-toggle-recurring').parentElement.style.display = isTransfer ? 'none' : '';
+  // Actualizar placeholder de nota según tipo
+  const notePlaceholders = { expense: '¿Para qué fue este gasto?', income: '¿De dónde proviene este ingreso?', transfer: 'Nota opcional' };
+  $('quickadd-note').placeholder = notePlaceholders[type] || 'Nota opcional';
 
   if (isTransfer) {
     loadTransferAccountPickers();
@@ -2285,8 +2317,9 @@ async function loadQuickAddCategories(type) {
   // Actualizar State.categories con el filtro correcto del quickadd
   if (!State.categories.length) State.categories = cats;
 
-  const predicted = Categorizer.predict(parseFloat(State.quickAddAmount)||0);
-  const defaultId = predicted || (cats[0]?.id ?? '');
+  // Solo predecir para gastos (el Categorizer está entrenado con categorías de gasto)
+  const predicted = type === 'income' ? null : Categorizer.predict(parseFloat(State.quickAddAmount)||0);
+  const defaultId = (predicted && cats.find(c=>c.id===predicted)) ? predicted : (cats[0]?.id ?? '');
   State.quickAddCategoryId = defaultId;
 
   $('quickadd-categories').innerHTML = cats.map(c=>`
@@ -2365,7 +2398,8 @@ async function saveTransaction() {
       toast('Las cuentas de origen y destino deben ser distintas', 'error'); return;
     }
   } else {
-    if (!State.quickAddCategoryId) {
+    // La categoría es obligatoria solo para gastos
+    if (State.quickAddType === 'expense' && !State.quickAddCategoryId) {
       toast('Selecciona una categoría', 'error'); return;
     }
   }
@@ -2417,14 +2451,36 @@ const GOAL_COLORS = ['#10B981','#3B82F6','#8B5CF6','#F59E0B','#EC4899','#06B6D4'
 let goalSelectedIcon = '🎯', goalSelectedColor = '#10B981';
 
 function initGoalForm() {
-  $('goal-icon-picker').innerHTML = GOAL_ICONS.map(i=>`
+  // Emoji personalizado — muestra preview + input para escribir cualquier emoji
+  const customIsInList = GOAL_ICONS.includes(goalSelectedIcon);
+  $('goal-icon-picker').innerHTML =
+    `<div style="display:flex;align-items:center;gap:0.5rem;width:100%;margin-bottom:0.4rem;">
+       <div id="goal-icon-preview" style="font-size:2rem;min-width:2.5rem;text-align:center;line-height:1;">${goalSelectedIcon}</div>
+       <input type="text" id="goal-custom-icon" class="input" placeholder="✏️ Escribe cualquier emoji"
+         style="flex:1;font-size:1.2rem;padding:0.4rem 0.6rem;" maxlength="4"
+         value="${customIsInList ? '' : goalSelectedIcon}" />
+     </div>` +
+    GOAL_ICONS.map(i=>`
     <button type="button" class="icon-btn ${i===goalSelectedIcon?'selected':''}" data-icon="${i}">${i}</button>`).join('');
+
   $('goal-color-picker').innerHTML = GOAL_COLORS.map(c=>`
     <button type="button" class="color-btn ${c===goalSelectedColor?'selected':''}" data-color="${c}" style="background:${c}"></button>`).join('');
+
+  // Input de emoji personalizado
+  $('goal-custom-icon').addEventListener('input', e => {
+    const val = e.target.value.trim();
+    if (!val) return;
+    goalSelectedIcon = val;
+    $('goal-icon-preview').textContent = val;
+    // Desmarcar todos los botones de la lista fija
+    $('goal-icon-picker').querySelectorAll('.icon-btn').forEach(x=>x.classList.remove('selected'));
+  });
 
   $('goal-icon-picker').querySelectorAll('.icon-btn').forEach(b=>{
     b.addEventListener('click',()=>{
       goalSelectedIcon=b.dataset.icon;
+      $('goal-icon-preview').textContent = goalSelectedIcon;
+      $('goal-custom-icon').value = '';  // limpiar input personalizado
       $('goal-icon-picker').querySelectorAll('.icon-btn').forEach(x=>x.classList.toggle('selected',x===b));
     });
   });
