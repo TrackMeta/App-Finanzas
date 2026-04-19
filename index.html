@@ -252,14 +252,14 @@
       </div>
       <!-- Fecha específica (solo cuando filter=date) -->
       <div id="date-specific-row" class="date-custom-row hidden">
-        <input type="date" id="global-date-specific" class="input input-sm" />
+        <input type="date" id="global-date-specific" class="input-sm" />
         <button class="btn btn-sm btn-primary" onclick="applySpecificDateFilter()">Ver</button>
       </div>
       <!-- Rango personalizado (solo cuando filter=custom) -->
       <div id="date-custom-row" class="date-custom-row hidden">
-        <input type="date" id="global-date-from" class="input input-sm" />
-        <span class="text-muted text-xs">→</span>
-        <input type="date" id="global-date-to"   class="input input-sm" />
+        <input type="date" id="global-date-from" class="input-sm" />
+        <span class="date-range-sep">→</span>
+        <input type="date" id="global-date-to"   class="input-sm" />
         <button class="btn btn-sm btn-primary" onclick="applyCustomDateFilter()">Aplicar</button>
       </div>
     </div>
