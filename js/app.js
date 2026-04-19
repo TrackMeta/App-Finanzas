@@ -308,12 +308,14 @@ async function showOnboarding() {
   $('ob-next-1').addEventListener('click', saveBalancesAndContinue);
   $('ob-skip-1').addEventListener('click', () => goToStep(2));
 
-  // Botón final → entrar a la app
+  // Botón final → entrar a la app (once:true evita duplicar el listener si showOnboarding se llama dos veces)
   $('ob-finish').addEventListener('click', () => {
+    // Guardar con clave de usuario Y sin clave de usuario (doble seguridad)
     lsSet(uk('cf_onboarding_done'), true);
+    lsSet('cf_onboarding_done', true);
     screen.classList.add('hidden');
     showApp();
-  });
+  }, { once: true });
 }
 
 // ---- DASHBOARD ----
@@ -1160,10 +1162,16 @@ function selectCalDay(dateStr, txs) {
   if (cell) cell.classList.add('selected');
 
   const detail = $('cal-day-detail');
-  if (!txs.length) { detail.classList.add('hidden'); return; }
-
   const d = new Date(dateStr+'T00:00:00');
   $('cal-day-title').textContent = d.toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long'});
+
+  if (!txs.length) {
+    $('cal-day-total').innerHTML = '';
+    $('cal-day-transactions').innerHTML = '<p class="text-muted text-center text-sm" style="padding:0.75rem 0;">Sin movimientos este día</p>';
+    detail.classList.remove('hidden');
+    detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return;
+  }
 
   const totalExp = txs.filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
   const totalInc = txs.filter(t=>t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
@@ -1181,6 +1189,8 @@ function selectCalDay(dateStr, txs) {
 
   renderTxList($('cal-day-transactions'), txs);
   detail.classList.remove('hidden');
+  // Hacer scroll automático al detalle del día
+  setTimeout(() => detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
 }
 
 // ---- INSIGHTS PAGE ----
@@ -2415,7 +2425,7 @@ async function saveTransaction() {
       date:         $('quickadd-date').value || today(),
       note:         $('quickadd-note').value || null,
       is_recurring: isTransfer ? false : State.quickAddRecurring,
-      category_id:  isTransfer ? null : State.quickAddCategoryId,
+      category_id:  isTransfer ? null : (State.quickAddCategoryId || null),
       account_id:   isTransfer ? null : (State.quickAddAccountId || null),
       from_account: isTransfer ? State.transferFromId  : null,
       to_account:   isTransfer ? State.transferToId    : null,
@@ -2532,7 +2542,7 @@ async function init() {
     return; // Detener init hasta que el usuario inicie sesión
   }
 
-  State.user = Auth.getUser();
+  State.user = AuthService.getCachedUser();
   continueInit();
 }
 
@@ -2545,7 +2555,7 @@ function setupAuthForms() {
     $('login-error').classList.add('hidden');
     try {
       await AuthService.login($('login-email').value, $('login-password').value);
-      State.user = Auth.getUser();
+      State.user = AuthService.getCachedUser();
       continueInit();
     } catch (err) {
       showAuthError('login', err.message);
@@ -2563,7 +2573,7 @@ function setupAuthForms() {
       if ($('reg-password').value !== $('reg-confirm').value) throw new Error('Las contraseñas no coinciden');
       const emailVal = $('reg-email').value;
       await AuthService.register(emailVal, $('reg-password').value);
-      State.user = Auth.getUser();
+      State.user = AuthService.getCachedUser();
       continueInit();
     } catch (err) {
       showAuthError('register', err.message);
@@ -2578,7 +2588,9 @@ async function continueInit() {
   if (authScreen) { authScreen.classList.add('hidden'); authScreen.classList.remove('active'); }
 
   // Primera vez (por usuario): mostrar onboarding
-  if (!lsGet(uk('cf_onboarding_done'), false)) {
+  // Verificar clave con y sin scope de usuario para máxima compatibilidad
+  const onbDone = lsGet(uk('cf_onboarding_done'), false) || lsGet('cf_onboarding_done', false);
+  if (!onbDone) {
     showOnboarding();
   } else {
     showApp();
@@ -2898,6 +2910,8 @@ async function continueInit() {
   $('btn-logout').addEventListener('click', async () => {
     if (confirm('¿Cerrar sesión?')) {
       try { await AuthService.logout(); } catch {}
+      // Limpiar tokens de sesión de Supabase para garantizar cierre completo
+      Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
       location.reload();
     }
   });
